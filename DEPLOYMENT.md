@@ -36,7 +36,8 @@ LINE_CHANNEL_SECRET=...
 Optional:
 
 ```env
-VITE_GEMINI_API_KEY=...
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-3.5-flash
 DATABASE_URL=...
 ```
 
@@ -96,4 +97,3 @@ Then in the app, confirm the System Status panel shows:
 4. Send a test greeting manually.
 5. Open the Line report link and confirm the senior status becomes green.
 6. Check the message history modal for outbound and inbound records.
-

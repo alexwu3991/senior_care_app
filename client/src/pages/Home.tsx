@@ -67,35 +67,6 @@ interface MessageRow {
   sentAt: number;
 }
 
-// --- Gemini API Helper ---
-const callGemini = async (prompt: string): Promise<string> => {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
-  if (!apiKey) {
-    if (prompt.includes("3 點") || prompt.includes("注意事項")) {
-      return "本機範本：\n• 主動確認今天是否按時用餐、喝水與服藥。\n• 關心身體是否有不舒服、跌倒或睡眠變差。\n• 若超過一天未回報，建議志工電話聯繫或安排探訪。";
-    }
-
-    return "早安！今天也請記得吃飯、喝水，照顧好身體。看到訊息後，請點一下回報平安，讓我們放心。";
-  }
-
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      }
-    );
-    if (!response.ok) throw new Error(`API Error: ${response.status}`);
-    const data = await response.json() as { candidates?: Array<{ content: { parts: Array<{ text: string }> } }> };
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "無法生成內容，請稍後再試。";
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "連線發生錯誤，請檢查網路或稍後再試。";
-  }
-};
-
 // --- Components ---
 const isReportOverdue = (senior: SeniorRow, now = Date.now()) => {
   if (!senior.lineUserId) return false;
@@ -244,9 +215,10 @@ const SystemStatusPanel = ({
           value={
             status.dailyGreeting.enabled
               ? formatDailyGreetingTime(status.dailyGreeting.hour, status.dailyGreeting.timeZone)
-              : '停用'
+              : '手動'
           }
-          tone={status.dailyGreeting.enabled ? 'green' : 'gray'}
+          tone={status.dailyGreeting.enabled ? 'green' : 'blue'}
+          detail={status.dailyGreeting.enabled ? '自動排程啟用' : '排程停用，可手動發送'}
         />
         <SystemStatusItem
           icon={<Wrench size={15} />}
@@ -375,6 +347,8 @@ export default function Home() {
     onError: (e) => toast.error(`產生回報連結失敗：${e.message}`),
   });
 
+  const generateAiText = trpc.senior.generateAiText.useMutation();
+
   // UI States
   const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'line'>('dashboard');
   const [newName, setNewName] = useState('');
@@ -478,14 +452,22 @@ export default function Home() {
     const senior = seniors.find(s => s.id === currentComposeId) as SeniorRow | undefined;
     if (!senior) return;
     setIsGeneratingMessage(true);
-    const hour = new Date().getHours();
-    let timeOfDay = '早上';
-    if (hour >= 11 && hour < 14) timeOfDay = '中午';
-    if (hour >= 18) timeOfDay = '晚上';
-    const prompt = `請為一位名叫「${senior.name}」的長者生成一則溫暖的 Line 問候訊息。情境：${timeOfDay}問候。長者健康狀況：${senior.health} (${senior.healthNote || '無特殊備註'})。要求：1. 語氣要非常親切、溫暖，像晚輩對長輩的關心。2. 內容不超過 60 字。3. 根據健康狀況加入一句貼心提醒。4. 最後不用加「請點擊連結」。5. 使用繁體中文。`;
-    const generated = await callGemini(prompt);
-    setComposeText(generated.trim());
-    setIsGeneratingMessage(false);
+    try {
+      const hour = new Date().getHours();
+      let timeOfDay = '早上';
+      if (hour >= 11 && hour < 14) timeOfDay = '中午';
+      if (hour >= 18) timeOfDay = '晚上';
+      const prompt = `請為一位名叫「${senior.name}」的長者生成一則溫暖的 Line 問候訊息。情境：${timeOfDay}問候。長者健康狀況：${senior.health} (${senior.healthNote || '無特殊備註'})。要求：1. 語氣要非常親切、溫暖，像晚輩對長輩的關心。2. 內容不超過 60 字。3. 根據健康狀況加入一句貼心提醒。4. 最後不用加「請點擊連結」。5. 使用繁體中文。`;
+      const generated = await generateAiText.mutateAsync({ prompt, fallbackType: 'greeting' });
+      setComposeText(generated.text.trim());
+      if (generated.source === 'fallback') {
+        toast.warning('Gemini 尚未啟用，已使用本機範本');
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'AI 生成失敗');
+    } finally {
+      setIsGeneratingMessage(false);
+    }
   };
 
   const finalizeSend = () => {
@@ -505,10 +487,18 @@ export default function Home() {
       return;
     }
     setLoadingAdviceId(senior.id);
-    const prompt = `我是一位關懷獨居長者的志工。請針對以下長者狀況，提供 3 點具體、簡短的「探視/關懷注意事項」。長者：${senior.name}。主要狀況：${senior.health}。備註：${senior.healthNote || '無'}。格式：• 建議一\n• 建議二\n• 建議三。語氣專業但易懂，繁體中文。`;
-    const advice = await callGemini(prompt);
-    setAdviceMap(prev => ({ ...prev, [senior.id]: advice }));
-    setLoadingAdviceId(null);
+    try {
+      const prompt = `我是一位關懷獨居長者的志工。請針對以下長者狀況，提供 3 點具體、簡短的「探視/關懷注意事項」。長者：${senior.name}。主要狀況：${senior.health}。備註：${senior.healthNote || '無'}。格式：• 建議一\n• 建議二\n• 建議三。語氣專業但易懂，繁體中文。`;
+      const advice = await generateAiText.mutateAsync({ prompt, fallbackType: 'advice' });
+      setAdviceMap(prev => ({ ...prev, [senior.id]: advice.text }));
+      if (advice.source === 'fallback') {
+        toast.warning('Gemini 尚未啟用，已使用本機範本');
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'AI 生成失敗');
+    } finally {
+      setLoadingAdviceId(null);
+    }
   };
 
   const handleBindLine = (id: number) => {

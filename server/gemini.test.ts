@@ -1,27 +1,31 @@
 import { describe, it, expect } from "vitest";
+import { getGeminiApiKey, getGeminiModel } from "./gemini";
 
-const hasGeminiApiKey = Boolean(process.env.VITE_GEMINI_API_KEY);
+const hasGeminiApiKey = Boolean(getGeminiApiKey());
 const describeGemini = hasGeminiApiKey ? describe : describe.skip;
 
 describeGemini("Gemini API Key Validation", () => {
-  it("VITE_GEMINI_API_KEY should be set", () => {
+  it("GEMINI_API_KEY should be set", () => {
     // 在伺服器端測試環境變數是否存在
-    const apiKey = process.env.VITE_GEMINI_API_KEY;
+    const apiKey = getGeminiApiKey();
     expect(apiKey).toBeTruthy();
     expect(apiKey?.length).toBeGreaterThan(10);
   });
 
   it("Gemini API should respond with valid content", async () => {
-    const apiKey = process.env.VITE_GEMINI_API_KEY;
+    const apiKey = getGeminiApiKey();
     if (!apiKey) {
-      throw new Error("VITE_GEMINI_API_KEY is not set");
+      throw new Error("GEMINI_API_KEY is not set");
     }
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${getGeminiModel()}:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
         body: JSON.stringify({
           contents: [{ parts: [{ text: "請用一句話說「測試成功」" }] }],
         }),

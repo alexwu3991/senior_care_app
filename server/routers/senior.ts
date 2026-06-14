@@ -17,6 +17,7 @@ import {
   sendGreetingWithReplyButton,
   sendLineMessage,
 } from "../line";
+import { generateGeminiText } from "../gemini";
 import { getDailyGreetingPreview } from "../dailyGreeting";
 import {
   buildLineWebhookEndpoint,
@@ -33,6 +34,15 @@ const DevScenarioEnum = z.enum([
   "normal",
   "clearLine",
 ]);
+const AiFallbackTypeEnum = z.enum(["greeting", "advice"]);
+
+function getGeminiFallbackText(type: z.infer<typeof AiFallbackTypeEnum>): string {
+  if (type === "advice") {
+    return "本機範本：\n• 主動確認今天是否按時用餐、喝水與服藥。\n• 關心身體是否有不舒服、跌倒或睡眠變差。\n• 若超過一天未回報，建議志工電話聯繫或安排探訪。";
+  }
+
+  return "早安！今天也請記得吃飯、喝水，照顧好身體。看到訊息後，請點一下回報平安，讓我們放心。";
+}
 
 function assertLocalDevToolsEnabled(): void {
   const enabled =
@@ -193,6 +203,21 @@ export const seniorRouter = router({
     .input(z.object({ seniorId: z.number() }))
     .query(async ({ input }) => {
       return getMessagesBySeniorId(input.seniorId);
+    }),
+
+  // AI 文字生成：由後端代理 Gemini，避免 API key 暴露在前端 bundle。
+  generateAiText: publicProcedure
+    .input(
+      z.object({
+        prompt: z.string().min(1).max(2000),
+        fallbackType: AiFallbackTypeEnum,
+      })
+    )
+    .mutation(async ({ input }) => {
+      return generateGeminiText(
+        input.prompt,
+        getGeminiFallbackText(input.fallbackType)
+      );
     }),
 
   // 長者回報平安（由 Webhook 或模擬呼叫）

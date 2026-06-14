@@ -32,6 +32,10 @@ services:
         value: Asia/Taipei
       - key: DATABASE_URL
         sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
       - key: VITE_GEMINI_API_KEY
         sync: false
       - key: JWT_SECRET

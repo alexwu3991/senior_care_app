@@ -2,6 +2,7 @@ import { z } from "zod";
 import { notifyOwner } from "./notification";
 import { adminProcedure, publicProcedure, router } from "./trpc";
 import { buildLineWebhookEndpoint } from "../lineWebhook";
+import { getGeminiModel, isGeminiConfigured } from "../gemini";
 
 const localDataPath = () =>
   process.env.LOCAL_DATA_PATH || ".local-data/senior-store.json";
@@ -20,6 +21,7 @@ export const systemRouter = router({
   status: publicProcedure.query(() => {
     const hasDatabase = Boolean(process.env.DATABASE_URL);
     const dailyGreetingEnabled = process.env.DAILY_GREETING_ENABLED !== "false";
+    const geminiConfigured = isGeminiConfigured();
 
     return {
       storage: {
@@ -28,8 +30,8 @@ export const systemRouter = router({
         path: hasDatabase ? null : localDataPath(),
       },
       gemini: {
-        configured: Boolean(process.env.VITE_GEMINI_API_KEY),
-        label: process.env.VITE_GEMINI_API_KEY ? "真實 Gemini API" : "本機範本",
+        configured: geminiConfigured,
+        label: geminiConfigured ? `真實 Gemini API (${getGeminiModel()})` : "本機範本",
       },
       line: {
         pushConfigured: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
