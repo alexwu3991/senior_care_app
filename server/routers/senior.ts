@@ -112,7 +112,7 @@ function cleanAdviceText(text: string): string {
 
   return rawLines
     .slice(0, 3)
-    .map(line => `• ${line.replace(/[。．.]{2,}/g, "。").replace(/[。．.]*$/g, "。")}`)
+    .map(line => `• ${line.replace(/[。．.]{2,}/g, "。").replace(/[。．.]+$/g, "")}。`)
     .join("\n");
 }
 
