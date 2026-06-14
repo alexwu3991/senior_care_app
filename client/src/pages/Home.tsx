@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useAuth } from '@/_core/hooks/useAuth';
 import { trpc } from '@/lib/trpc';
 import {
   UserPlus,
@@ -52,6 +53,8 @@ interface SeniorRow {
   health: HealthStatus;
   healthNote: string | null;
   careInterviewNote: string | null;
+  managerOpenId: string | null;
+  managerName: string | null;
   lineUserId: string | null;
   lineDisplayName: string | null;
   status: SeniorStatus;
@@ -148,6 +151,7 @@ const formatDailyGreetingTime = (hour: number, minute: number, timeZone: string)
 
 const SystemStatusPanel = ({
   status,
+  currentUserName,
 }: {
   status?: {
     storage: { label: string; path: string | null };
@@ -162,6 +166,7 @@ const SystemStatusPanel = ({
     auth: { configured: boolean };
     localTestTools: { enabled: boolean };
   };
+  currentUserName?: string | null;
 }) => {
   if (!status) {
     return (
@@ -228,6 +233,13 @@ const SystemStatusPanel = ({
           tone={status.localTestTools.enabled ? 'blue' : 'gray'}
           detail={status.auth.configured ? '登入已設定' : '本機免登入'}
         />
+        <SystemStatusItem
+          icon={<Users size={15} />}
+          label="管理者"
+          value={status.auth.configured ? (currentUserName || '未登入') : '共用模式'}
+          tone={status.auth.configured ? (currentUserName ? 'green' : 'yellow') : 'blue'}
+          detail={status.auth.configured ? '只顯示自己關懷的長者' : '尚未啟用登入，暫不限制長者歸屬'}
+        />
       </div>
     </div>
   );
@@ -235,6 +247,8 @@ const SystemStatusPanel = ({
 
 export default function Home() {
   const utils = trpc.useUtils();
+  const { user } = useAuth();
+  const currentUserName = user?.name || user?.email || user?.openId || null;
   const [historySenior, setHistorySenior] = useState<SeniorRow | null>(null);
   const { data: seniors = [], isLoading } = trpc.senior.list.useQuery();
   const { data: systemStatus } = trpc.system.status.useQuery(undefined, {
@@ -607,7 +621,7 @@ export default function Home() {
               </button>
             </div>
 
-            <SystemStatusPanel status={systemStatus} />
+            <SystemStatusPanel status={systemStatus} currentUserName={currentUserName} />
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-4">
               <div className="flex items-start justify-between gap-3">
@@ -952,6 +966,12 @@ export default function Home() {
                     <div className="flex justify-between">
                       <span className="text-gray-500 flex items-center gap-1"><Activity size={14} /> 健康</span>
                       <span className="text-gray-700">{senior.health} {senior.healthNote && `(${senior.healthNote})`}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 flex items-center gap-1"><Users size={14} /> 負責管理者</span>
+                      <span className={senior.managerName ? 'text-gray-700' : 'text-gray-400'}>
+                        {senior.managerName || '未指派'}
+                      </span>
                     </div>
                     {senior.careInterviewNote && (
                       <div className="bg-white border border-orange-100 rounded-lg p-3 text-xs text-gray-700 leading-relaxed">

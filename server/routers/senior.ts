@@ -1,6 +1,9 @@
 import { z } from "zod";
 import crypto from "crypto";
+import { TRPCError } from "@trpc/server";
 import { publicProcedure, router } from "../_core/trpc";
+import type { Senior, User } from "../../drizzle/schema";
+import type { TrpcContext } from "../_core/context";
 import {
   getAllSeniors,
   getSeniorById,
@@ -35,6 +38,38 @@ const DevScenarioEnum = z.enum([
   "clearLine",
 ]);
 const AiFallbackTypeEnum = z.enum(["greeting", "advice"]);
+
+function isAuthEnforced(): boolean {
+  return Boolean(process.env.OAUTH_SERVER_URL && process.env.VITE_APP_ID);
+}
+
+function getManagerName(user: User): string {
+  return user.name || user.email || user.openId;
+}
+
+function requireUserWhenAuthEnabled(ctx: TrpcContext): User | null {
+  if (!isAuthEnforced()) return ctx.user;
+  if (ctx.user) return ctx.user;
+  throw new TRPCError({ code: "UNAUTHORIZED", message: "需要登入管理者帳號" });
+}
+
+function canManageSenior(user: User | null, senior: Senior): boolean {
+  if (!isAuthEnforced()) return true;
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  if (!senior.managerOpenId) return true;
+  return senior.managerOpenId === user.openId;
+}
+
+async function getAccessibleSenior(id: number, ctx: TrpcContext): Promise<Senior> {
+  const user = requireUserWhenAuthEnabled(ctx);
+  const senior = await getSeniorById(id);
+  if (!senior) throw new Error("找不到此長者資料");
+  if (!canManageSenior(user, senior)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "只能管理自己關懷的長者" });
+  }
+  return senior;
+}
 
 function getGeminiFallbackText(type: z.infer<typeof AiFallbackTypeEnum>): string {
   if (type === "advice") {
@@ -153,15 +188,18 @@ function fakeWebhookLineUserId(): string {
 
 export const seniorRouter = router({
   // 取得所有長者
-  list: publicProcedure.query(async () => {
-    return getAllSeniors();
+  list: publicProcedure.query(async ({ ctx }) => {
+    const user = requireUserWhenAuthEnabled(ctx);
+    const seniors = await getAllSeniors();
+    if (!isAuthEnforced() || !user || user.role === "admin") return seniors;
+    return seniors.filter(senior => !senior.managerOpenId || senior.managerOpenId === user.openId);
   }),
 
   // 取得單一長者
   getById: publicProcedure
     .input(z.object({ id: z.number() }))
-    .query(async ({ input }) => {
-      return getSeniorById(input.id);
+    .query(async ({ input, ctx }) => {
+      return getAccessibleSenior(input.id, ctx);
     }),
 
   // 新增長者
@@ -176,7 +214,8 @@ export const seniorRouter = router({
         careInterviewNote: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const user = requireUserWhenAuthEnabled(ctx);
       const id = await createSenior({
         name: input.name,
         phone: input.phone,
@@ -184,6 +223,8 @@ export const seniorRouter = router({
         health: input.health,
         healthNote: input.healthNote ?? null,
         careInterviewNote: input.careInterviewNote ?? null,
+        managerOpenId: user?.openId ?? null,
+        managerName: user ? getManagerName(user) : null,
         status: "gray",
       });
       return { id };
@@ -205,8 +246,9 @@ export const seniorRouter = router({
         lineDisplayName: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
+      await getAccessibleSenior(id, ctx);
       await updateSenior(id, data);
       // 如果綁定了 lineUserId，從待綁定清單移除
       if (input.lineUserId) {
@@ -218,7 +260,8 @@ export const seniorRouter = router({
   // 刪除長者
   delete: publicProcedure
     .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await getAccessibleSenior(input.id, ctx);
       await deleteSenior(input.id);
       return { success: true };
     }),
@@ -226,7 +269,8 @@ export const seniorRouter = router({
   // 手動更新狀態
   updateStatus: publicProcedure
     .input(z.object({ id: z.number(), status: StatusEnum }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await getAccessibleSenior(input.id, ctx);
       await updateSenior(input.id, { status: input.status });
       return { success: true };
     }),
@@ -240,9 +284,8 @@ export const seniorRouter = router({
         appBaseUrl: z.string().url(),
       })
     )
-    .mutation(async ({ input }) => {
-      const senior = await getSeniorById(input.seniorId);
-      if (!senior) throw new Error("找不到此長者資料");
+    .mutation(async ({ input, ctx }) => {
+      const senior = await getAccessibleSenior(input.seniorId, ctx);
       if (!senior.lineUserId) {
         return {
           success: false,
@@ -292,7 +335,8 @@ export const seniorRouter = router({
   // 取得訊息記錄
   getMessages: publicProcedure
     .input(z.object({ seniorId: z.number() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      await getAccessibleSenior(input.seniorId, ctx);
       return getMessagesBySeniorId(input.seniorId);
     }),
 
@@ -313,9 +357,8 @@ export const seniorRouter = router({
 
   generateGreeting: publicProcedure
     .input(z.object({ seniorId: z.number() }))
-    .mutation(async ({ input }) => {
-      const senior = await getSeniorById(input.seniorId);
-      if (!senior) throw new Error("找不到此長者資料");
+    .mutation(async ({ input, ctx }) => {
+      const senior = await getAccessibleSenior(input.seniorId, ctx);
       const timeOfDay = getTimeOfDay();
       const fallback = buildGreetingFallback(senior);
       const prompt = [
@@ -343,9 +386,8 @@ export const seniorRouter = router({
 
   generateCareAdvice: publicProcedure
     .input(z.object({ seniorId: z.number() }))
-    .mutation(async ({ input }) => {
-      const senior = await getSeniorById(input.seniorId);
-      if (!senior) throw new Error("找不到此長者資料");
+    .mutation(async ({ input, ctx }) => {
+      const senior = await getAccessibleSenior(input.seniorId, ctx);
       const fallback = buildAdviceFallback(senior);
       const prompt = [
         "你是台灣獨居長者關懷小組的照護協作員。",

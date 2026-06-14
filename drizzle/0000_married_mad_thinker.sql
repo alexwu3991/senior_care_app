@@ -17,6 +17,8 @@ CREATE TABLE `seniors` (
 	`health` enum('良好','慢性病','行動不便','需定期回診','其他') NOT NULL DEFAULT '良好',
 	`healthNote` text,
 	`careInterviewNote` text,
+	`managerOpenId` varchar(64),
+	`managerName` varchar(100),
 	`lineUserId` varchar(64),
 	`lineDisplayName` varchar(100),
 	`status` enum('green','yellow','red','gray') NOT NULL DEFAULT 'gray',

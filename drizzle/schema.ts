@@ -38,6 +38,8 @@ export const seniors = mysqlTable("seniors", {
     .notNull(),
   healthNote: text("healthNote"),
   careInterviewNote: text("careInterviewNote"),
+  managerOpenId: varchar("managerOpenId", { length: 64 }),
+  managerName: varchar("managerName", { length: 100 }),
   // Line 整合欄位
   lineUserId: varchar("lineUserId", { length: 64 }), // Line 用戶 ID（長者加入好友後取得）
   lineDisplayName: varchar("lineDisplayName", { length: 100 }), // Line 顯示名稱
