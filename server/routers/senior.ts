@@ -75,12 +75,14 @@ function buildAdviceFallback(senior: { health: string; healthNote: string | null
 
 function cleanGreetingText(text: string): string {
   return text
-    .replace(/```[\s\S]*?```/g, "")
+    .replace(/```[a-zA-Z]*\n?/g, "")
+    .replace(/```/g, "")
     .split("\n")
     .map(line => line.trim())
     .find(line => line.length > 0)
-    ?.replace(/^(問候語|訊息|輸出|答案)\s*[:：]\s*/g, "")
-    .replace(/^["'「『]|["'」』]$/g, "")
+    ?.replace(/^\s*(?:[-*•]|\d+[.、]|[一二三][、.])\s*/g, "")
+    .replace(/^(問候語|訊息|輸出|答案|以下是|好的)\s*[:：，,]?\s*/g, "")
+    .replace(/^["'「『\s]+|["'」』\s]+$/g, "")
     .trim() || "";
 }
 
@@ -88,7 +90,7 @@ function isUsableGreeting(text: string): boolean {
   const chineseChars = text.match(/[\u4e00-\u9fff]/g)?.length || 0;
   return (
     chineseChars >= 12 &&
-    text.length <= 90 &&
+    text.length <= 140 &&
     !/^[，。、！？；：,.!?;:裡了的和與]/.test(text) &&
     !/(https?:\/\/|請點擊|連結|以下是|問候語|訊息：)/.test(text)
   );
@@ -96,8 +98,9 @@ function isUsableGreeting(text: string): boolean {
 
 function cleanAdviceText(text: string): string {
   const rawLines = text
-    .replace(/```[\s\S]*?```/g, "")
-    .split(/\n|(?=\d+[.、])|(?=[一二三][、.])/g)
+    .replace(/```[a-zA-Z]*\n?/g, "")
+    .replace(/```/g, "")
+    .split(/\n|(?=\s*[-*•])|(?=\d+[.、])|(?=[一二三][、.])/g)
     .map(line =>
       line
         .replace(/^\s*(?:[-*•]|\d+[.、]|[一二三][、.])\s*/g, "")
