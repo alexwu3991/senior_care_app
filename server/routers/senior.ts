@@ -83,6 +83,7 @@ function cleanGreetingText(text: string): string {
     ?.replace(/^\s*(?:[-*•]|\d+[.、]|[一二三][、.])\s*/g, "")
     .replace(/^(問候語|訊息|輸出|答案|以下是|好的)\s*[:：，,]?\s*/g, "")
     .replace(/^["'「『\s]+|["'」』\s]+$/g, "")
+    .replace(/[。．.]{2,}/g, "。")
     .trim() || "";
 }
 
@@ -111,7 +112,7 @@ function cleanAdviceText(text: string): string {
 
   return rawLines
     .slice(0, 3)
-    .map(line => `• ${line.replace(/[。．.]*$/g, "。")}`)
+    .map(line => `• ${line.replace(/[。．.]{2,}/g, "。").replace(/[。．.]*$/g, "。")}`)
     .join("\n");
 }
 
