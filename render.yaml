@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: senior-care-app
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: corepack enable && corepack pnpm install --frozen-lockfile && corepack pnpm run build
+    startCommand: corepack pnpm run start
+    healthCheckPath: /
+    disk:
+      name: senior-care-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOCAL_DATA_PATH
+        value: /var/data/senior-store.json
+      - key: APP_BASE_URL
+        sync: false
+      - key: LINE_CHANNEL_ID
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: DAILY_GREETING_ENABLED
+        value: "false"
+      - key: DAILY_GREETING_HOUR
+        value: "8"
+      - key: DAILY_GREETING_TIME_ZONE
+        value: Asia/Taipei
+      - key: DATABASE_URL
+        sync: false
+      - key: VITE_GEMINI_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
