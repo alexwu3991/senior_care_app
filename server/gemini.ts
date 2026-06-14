@@ -14,6 +14,12 @@ type GeminiResponse = {
 };
 
 export type GeminiSource = "gemini" | "fallback";
+type GeminiTextOptions = {
+  temperature?: number;
+  maxOutputTokens?: number;
+  cleanText?: (text: string) => string;
+  validateText?: (text: string) => boolean;
+};
 
 export function getGeminiApiKey(): string {
   return process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
@@ -29,7 +35,8 @@ export function isGeminiConfigured(): boolean {
 
 export async function generateGeminiText(
   prompt: string,
-  fallbackText: string
+  fallbackText: string,
+  options: GeminiTextOptions = {}
 ): Promise<{
   text: string;
   source: GeminiSource;
@@ -40,8 +47,9 @@ export async function generateGeminiText(
   const primaryModel = getGeminiModel();
   const models = Array.from(
     new Set([
-      primaryModel,
       "gemini-2.5-flash",
+      primaryModel,
+      "gemini-3.5-flash",
       "gemini-2.0-flash",
       "gemini-1.5-flash",
     ])
@@ -57,47 +65,50 @@ export async function generateGeminiText(
   }
 
   const errors: string[] = [];
+  const cleanText = options.cleanText ?? ((text: string) => text.trim());
+  const validateText = options.validateText ?? ((text: string) => text.trim().length > 0);
 
   for (const model of models) {
     try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 220,
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
           },
-        }),
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: options.temperature ?? 0.45,
+              maxOutputTokens: options.maxOutputTokens ?? 220,
+            },
+          }),
+        }
+      );
+
+      const data = (await response.json().catch(() => ({}))) as GeminiResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error?.message || `Gemini API Error: ${response.status}`);
       }
-    );
 
-    const data = (await response.json().catch(() => ({}))) as GeminiResponse;
+      const text = cleanText(
+        data.candidates?.[0]?.content?.parts
+          ?.map(part => part.text || "")
+          .join("") || ""
+      );
 
-    if (!response.ok) {
-      throw new Error(data.error?.message || `Gemini API Error: ${response.status}`);
-    }
+      if (!validateText(text)) {
+        throw new Error("Gemini API returned unusable text");
+      }
 
-    const text = data.candidates?.[0]?.content?.parts
-      ?.map(part => part.text || "")
-      .join("")
-      .trim();
-
-    if (!text) {
-      throw new Error("Gemini API returned no text");
-    }
-
-    return {
-      text,
-      source: "gemini",
-      model,
-    };
+      return {
+        text,
+        source: "gemini",
+        model,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(`${model}: ${message}`);
@@ -112,5 +123,5 @@ export async function generateGeminiText(
     source: "fallback",
     model: primaryModel,
     error,
-  }
+  };
 }

@@ -44,6 +44,83 @@ function getGeminiFallbackText(type: z.infer<typeof AiFallbackTypeEnum>): string
   return "早安！今天也請記得吃飯、喝水，照顧好身體。看到訊息後，請點一下回報平安，讓我們放心。";
 }
 
+function getTimeOfDay(): "早上" | "中午" | "晚上" {
+  const hourText = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei",
+    hour: "2-digit",
+    hour12: false,
+  }).format(new Date());
+  const hour = Number(hourText);
+  if (hour >= 18) return "晚上";
+  if (hour >= 11) return "中午";
+  return "早上";
+}
+
+function buildGreetingFallback(senior: { name: string; health: string; healthNote: string | null }): string {
+  const greeting = getTimeOfDay() === "晚上" ? "晚安" : getTimeOfDay() === "中午" ? "午安" : "早安";
+  const healthHint = senior.health === "良好"
+    ? "今天也請記得喝水、吃飯。"
+    : "今天也請留意身體狀況、按時休息。";
+  return `${greeting}，${senior.name}！${healthHint}看到訊息後回報平安，讓我們放心。`;
+}
+
+function buildAdviceFallback(senior: { health: string; healthNote: string | null }): string {
+  const note = senior.healthNote ? `，特別留意「${senior.healthNote}」` : "";
+  return [
+    `• 先確認今天是否按時用餐、喝水與服藥${note}。`,
+    `• 關心身體是否有不適、跌倒、睡眠變差或行動困難。`,
+    `• 若超過一天未回報平安，建議志工電話聯繫或安排探訪。`,
+  ].join("\n");
+}
+
+function cleanGreetingText(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, "")
+    .split("\n")
+    .map(line => line.trim())
+    .find(line => line.length > 0)
+    ?.replace(/^(問候語|訊息|輸出|答案)\s*[:：]\s*/g, "")
+    .replace(/^["'「『]|["'」』]$/g, "")
+    .trim() || "";
+}
+
+function isUsableGreeting(text: string): boolean {
+  const chineseChars = text.match(/[\u4e00-\u9fff]/g)?.length || 0;
+  return (
+    chineseChars >= 12 &&
+    text.length <= 90 &&
+    !/^[，。、！？；：,.!?;:裡了的和與]/.test(text) &&
+    !/(https?:\/\/|請點擊|連結|以下是|問候語|訊息：)/.test(text)
+  );
+}
+
+function cleanAdviceText(text: string): string {
+  const rawLines = text
+    .replace(/```[\s\S]*?```/g, "")
+    .split(/\n|(?=\d+[.、])|(?=[一二三][、.])/g)
+    .map(line =>
+      line
+        .replace(/^\s*(?:[-*•]|\d+[.、]|[一二三][、.])\s*/g, "")
+        .replace(/^(建議|注意事項)\s*[:：]?\s*/g, "")
+        .trim()
+    )
+    .filter(line => line.length > 0 && !/^(以下|當然|好的|照護重點)/.test(line));
+
+  return rawLines
+    .slice(0, 3)
+    .map(line => `• ${line.replace(/[。．.]*$/g, "。")}`)
+    .join("\n");
+}
+
+function isUsableAdvice(text: string): boolean {
+  const lines = text.split("\n").filter(line => line.trim().startsWith("•"));
+  return (
+    lines.length === 3 &&
+    lines.every(line => (line.match(/[\u4e00-\u9fff]/g)?.length || 0) >= 8) &&
+    !/(以下是|僅供參考|身為 AI)/.test(text)
+  );
+}
+
 function assertLocalDevToolsEnabled(): void {
   const enabled =
     process.env.NODE_ENV !== "production" ||
@@ -218,6 +295,62 @@ export const seniorRouter = router({
         input.prompt,
         getGeminiFallbackText(input.fallbackType)
       );
+    }),
+
+  generateGreeting: publicProcedure
+    .input(z.object({ seniorId: z.number() }))
+    .mutation(async ({ input }) => {
+      const senior = await getSeniorById(input.seniorId);
+      if (!senior) throw new Error("找不到此長者資料");
+      const timeOfDay = getTimeOfDay();
+      const fallback = buildGreetingFallback(senior);
+      const prompt = [
+        "你是台灣長者關懷志工，請產生一則可以直接貼到 LINE 的繁體中文問候語。",
+        `長者姓名：${senior.name}`,
+        `問候時段：${timeOfDay}`,
+        `健康狀況：${senior.health}`,
+        `健康備註：${senior.healthNote || "無"}`,
+        "規則：",
+        "1. 只輸出問候語正文，不要標題、編號、引號或說明。",
+        "2. 35 到 70 個中文字左右，語氣自然溫暖，像晚輩關心長輩。",
+        "3. 可以提醒喝水、吃飯、休息或留意身體。",
+        "4. 不要提到點擊連結、AI、模型、以下是。",
+        "5. 句子必須完整，不能從半句開始。",
+      ].join("\n");
+
+      return generateGeminiText(prompt, fallback, {
+        temperature: 0.35,
+        maxOutputTokens: 120,
+        cleanText: cleanGreetingText,
+        validateText: isUsableGreeting,
+      });
+    }),
+
+  generateCareAdvice: publicProcedure
+    .input(z.object({ seniorId: z.number() }))
+    .mutation(async ({ input }) => {
+      const senior = await getSeniorById(input.seniorId);
+      if (!senior) throw new Error("找不到此長者資料");
+      const fallback = buildAdviceFallback(senior);
+      const prompt = [
+        "你是台灣獨居長者關懷小組的照護協作員。",
+        "請依長者資料，產生給志工看的 3 點探視與電話關懷注意事項。",
+        `長者姓名：${senior.name}`,
+        `健康狀況：${senior.health}`,
+        `健康備註：${senior.healthNote || "無"}`,
+        "輸出規則：",
+        "1. 只輸出 3 行，每行都以「• 」開頭。",
+        "2. 每點要具體可執行，不要空泛鼓勵。",
+        "3. 使用繁體中文，不要提到 AI、模型、以下是、僅供參考。",
+        "4. 不要給醫療診斷；重點放在志工可觀察、可詢問、可聯繫的事項。",
+      ].join("\n");
+
+      return generateGeminiText(prompt, fallback, {
+        temperature: 0.25,
+        maxOutputTokens: 180,
+        cleanText: cleanAdviceText,
+        validateText: isUsableAdvice,
+      });
     }),
 
   // 長者回報平安（由 Webhook 或模擬呼叫）

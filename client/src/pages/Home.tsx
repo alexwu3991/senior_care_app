@@ -347,7 +347,8 @@ export default function Home() {
     onError: (e) => toast.error(`產生回報連結失敗：${e.message}`),
   });
 
-  const generateAiText = trpc.senior.generateAiText.useMutation();
+  const generateGreeting = trpc.senior.generateGreeting.useMutation();
+  const generateCareAdvice = trpc.senior.generateCareAdvice.useMutation();
   const updateDailyGreeting = trpc.system.updateDailyGreeting.useMutation({
     onSuccess: () => {
       utils.system.status.invalidate();
@@ -472,15 +473,10 @@ export default function Home() {
     if (!senior) return;
     setIsGeneratingMessage(true);
     try {
-      const hour = new Date().getHours();
-      let timeOfDay = '早上';
-      if (hour >= 11 && hour < 14) timeOfDay = '中午';
-      if (hour >= 18) timeOfDay = '晚上';
-      const prompt = `請為一位名叫「${senior.name}」的長者生成一則溫暖的 Line 問候訊息。情境：${timeOfDay}問候。長者健康狀況：${senior.health} (${senior.healthNote || '無特殊備註'})。要求：1. 語氣要非常親切、溫暖，像晚輩對長輩的關心。2. 內容不超過 60 字。3. 根據健康狀況加入一句貼心提醒。4. 最後不用加「請點擊連結」。5. 使用繁體中文。`;
-      const generated = await generateAiText.mutateAsync({ prompt, fallbackType: 'greeting' });
+      const generated = await generateGreeting.mutateAsync({ seniorId: senior.id });
       setComposeText(generated.text.trim());
       if (generated.source === 'fallback') {
-        toast.warning('Gemini 尚未啟用，已使用本機範本');
+        toast.warning('Gemini 輸出不穩，已使用安全範本');
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'AI 生成失敗');
@@ -507,11 +503,10 @@ export default function Home() {
     }
     setLoadingAdviceId(senior.id);
     try {
-      const prompt = `我是一位關懷獨居長者的志工。請針對以下長者狀況，提供 3 點具體、簡短的「探視/關懷注意事項」。長者：${senior.name}。主要狀況：${senior.health}。備註：${senior.healthNote || '無'}。格式：• 建議一\n• 建議二\n• 建議三。語氣專業但易懂，繁體中文。`;
-      const advice = await generateAiText.mutateAsync({ prompt, fallbackType: 'advice' });
+      const advice = await generateCareAdvice.mutateAsync({ seniorId: senior.id });
       setAdviceMap(prev => ({ ...prev, [senior.id]: advice.text }));
       if (advice.source === 'fallback') {
-        toast.warning('Gemini 尚未啟用，已使用本機範本');
+        toast.warning('Gemini 輸出不穩，已使用安全範本');
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'AI 生成失敗');
