@@ -51,6 +51,7 @@ interface SeniorRow {
   address: string;
   health: HealthStatus;
   healthNote: string | null;
+  careInterviewNote: string | null;
   lineUserId: string | null;
   lineDisplayName: string | null;
   status: SeniorStatus;
@@ -263,7 +264,7 @@ export default function Home() {
     onSuccess: () => {
       utils.senior.list.invalidate();
       setActiveTab('dashboard');
-      setNewName(''); setNewPhone(''); setNewAddress(''); setNewHealth('良好'); setNewHealthNote('');
+      setNewName(''); setNewPhone(''); setNewAddress(''); setNewHealth('良好'); setNewHealthNote(''); setNewCareInterviewNote('');
       toast.success('長者資料已新增！');
     },
     onError: (e) => toast.error(`新增失敗：${e.message}`),
@@ -364,6 +365,7 @@ export default function Home() {
   const [newAddress, setNewAddress] = useState('');
   const [newHealth, setNewHealth] = useState<HealthStatus>('良好');
   const [newHealthNote, setNewHealthNote] = useState('');
+  const [newCareInterviewNote, setNewCareInterviewNote] = useState('');
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editTargetId, setEditTargetId] = useState<number | null>(null);
@@ -372,6 +374,7 @@ export default function Home() {
   const [editAddress, setEditAddress] = useState('');
   const [editHealth, setEditHealth] = useState<HealthStatus>('良好');
   const [editHealthNote, setEditHealthNote] = useState('');
+  const [editCareInterviewNote, setEditCareInterviewNote] = useState('');
 
   const [showComposeModal, setShowComposeModal] = useState(false);
   const [composeText, setComposeText] = useState('');
@@ -422,7 +425,14 @@ export default function Home() {
   // --- Actions ---
   const handleAddSenior = (e: React.FormEvent) => {
     e.preventDefault();
-    createSenior.mutate({ name: newName, phone: newPhone, address: newAddress, health: newHealth, healthNote: newHealthNote });
+    createSenior.mutate({
+      name: newName,
+      phone: newPhone,
+      address: newAddress,
+      health: newHealth,
+      healthNote: newHealthNote,
+      careInterviewNote: newCareInterviewNote,
+    });
   };
 
   const openEditSenior = (senior: SeniorRow) => {
@@ -432,6 +442,7 @@ export default function Home() {
     setEditAddress(senior.address);
     setEditHealth(senior.health);
     setEditHealthNote(senior.healthNote || '');
+    setEditCareInterviewNote(senior.careInterviewNote || '');
     setShowEditModal(true);
   };
 
@@ -445,6 +456,7 @@ export default function Home() {
       address: editAddress,
       health: editHealth,
       healthNote: editHealthNote,
+      careInterviewNote: editCareInterviewNote,
     });
   };
 
@@ -941,6 +953,12 @@ export default function Home() {
                       <span className="text-gray-500 flex items-center gap-1"><Activity size={14} /> 健康</span>
                       <span className="text-gray-700">{senior.health} {senior.healthNote && `(${senior.healthNote})`}</span>
                     </div>
+                    {senior.careInterviewNote && (
+                      <div className="bg-white border border-orange-100 rounded-lg p-3 text-xs text-gray-700 leading-relaxed">
+                        <div className="font-bold text-orange-700 mb-1">關懷訪談記錄</div>
+                        <div className="whitespace-pre-line">{senior.careInterviewNote}</div>
+                      </div>
+                    )}
 
                     {/* 時間資訊 */}
                     {senior.messageSentTime && (
@@ -1109,6 +1127,12 @@ export default function Home() {
                   className="w-full h-24 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                   placeholder="例：高血壓，需定期量測" />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">關懷訪談記錄</label>
+                <textarea value={newCareInterviewNote} onChange={(e) => setNewCareInterviewNote(e.target.value)}
+                  className="w-full h-28 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  placeholder="例：最近睡眠較淺，擔心晚餐準備不方便，希望志工下次電話先關心飲食與睡眠。" />
+              </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => setActiveTab('dashboard')}
                   className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-lg">取消</button>
@@ -1246,6 +1270,15 @@ export default function Home() {
                   onChange={(e) => setEditHealthNote(e.target.value)}
                   className="w-full h-24 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm"
                   placeholder="例：高血壓，需定期量測"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">關懷訪談記錄</label>
+                <textarea
+                  value={editCareInterviewNote}
+                  onChange={(e) => setEditCareInterviewNote(e.target.value)}
+                  className="w-full h-28 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+                  placeholder="例：近期較少出門，電話中提到膝蓋不舒服，請下次優先確認行動與就醫需求。"
                 />
               </div>
               <div className="flex gap-3 pt-2">

@@ -37,6 +37,7 @@ export const seniors = mysqlTable("seniors", {
     .default("良好")
     .notNull(),
   healthNote: text("healthNote"),
+  careInterviewNote: text("careInterviewNote"),
   // Line 整合欄位
   lineUserId: varchar("lineUserId", { length: 64 }), // Line 用戶 ID（長者加入好友後取得）
   lineDisplayName: varchar("lineDisplayName", { length: 100 }), // Line 顯示名稱

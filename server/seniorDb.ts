@@ -106,6 +106,7 @@ async function loadLocalStore(): Promise<void> {
       memorySeniors.length,
       ...parsed.seniors.map(senior => ({
         ...senior,
+        careInterviewNote: senior.careInterviewNote ?? null,
         createdAt: new Date(senior.createdAt),
         updatedAt: new Date(senior.updatedAt),
       }))
@@ -169,6 +170,7 @@ function createMemorySenior(data: InsertSenior): Senior {
     address: data.address,
     health: data.health ?? "良好",
     healthNote: data.healthNote ?? null,
+    careInterviewNote: data.careInterviewNote ?? null,
     lineUserId: data.lineUserId ?? null,
     lineDisplayName: data.lineDisplayName ?? null,
     status: data.status ?? "gray",
@@ -273,6 +275,7 @@ export async function updateSenior(
       ...memorySeniors[index],
       ...data,
       healthNote: data.healthNote === undefined ? memorySeniors[index].healthNote : data.healthNote,
+      careInterviewNote: data.careInterviewNote === undefined ? memorySeniors[index].careInterviewNote : data.careInterviewNote,
       lineUserId: data.lineUserId === undefined ? memorySeniors[index].lineUserId : data.lineUserId,
       lineDisplayName: data.lineDisplayName === undefined ? memorySeniors[index].lineDisplayName : data.lineDisplayName,
       lastReportTime: data.lastReportTime === undefined ? memorySeniors[index].lastReportTime : data.lastReportTime,

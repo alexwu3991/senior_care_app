@@ -64,10 +64,17 @@ function buildGreetingFallback(senior: { name: string; health: string; healthNot
   return `${greeting}，${senior.name}！${healthHint}看到訊息後回報平安，讓我們放心。`;
 }
 
-function buildAdviceFallback(senior: { health: string; healthNote: string | null }): string {
+function buildAdviceFallback(senior: {
+  health: string;
+  healthNote: string | null;
+  careInterviewNote: string | null;
+}): string {
   const note = senior.healthNote ? `，特別留意「${senior.healthNote}」` : "";
+  const interview = senior.careInterviewNote
+    ? `，並參考最近訪談：「${senior.careInterviewNote}」`
+    : "";
   return [
-    `• 先確認今天是否按時用餐、喝水與服藥${note}。`,
+    `• 先確認今天是否按時用餐、喝水與服藥${note}${interview}。`,
     `• 關心身體是否有不適、跌倒、睡眠變差或行動困難。`,
     `• 若超過一天未回報平安，建議志工電話聯繫或安排探訪。`,
   ].join("\n");
@@ -166,6 +173,7 @@ export const seniorRouter = router({
         address: z.string().min(1),
         health: HealthStatusEnum,
         healthNote: z.string().optional(),
+        careInterviewNote: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -175,6 +183,7 @@ export const seniorRouter = router({
         address: input.address,
         health: input.health,
         healthNote: input.healthNote ?? null,
+        careInterviewNote: input.careInterviewNote ?? null,
         status: "gray",
       });
       return { id };
@@ -190,6 +199,7 @@ export const seniorRouter = router({
         address: z.string().optional(),
         health: HealthStatusEnum.optional(),
         healthNote: z.string().optional(),
+        careInterviewNote: z.string().optional(),
         status: StatusEnum.optional(),
         lineUserId: z.string().optional(),
         lineDisplayName: z.string().optional(),
@@ -343,11 +353,13 @@ export const seniorRouter = router({
         `長者姓名：${senior.name}`,
         `健康狀況：${senior.health}`,
         `健康備註：${senior.healthNote || "無"}`,
+        `關懷訪談記錄：${senior.careInterviewNote || "無"}`,
         "輸出規則：",
         "1. 只輸出 3 行，每行都以「• 」開頭。",
         "2. 每點至少 18 個中文字，要具體可執行，不要空泛鼓勵。",
-        "3. 使用繁體中文，不要提到 AI、模型、以下是、僅供參考。",
-        "4. 不要給醫療診斷；重點放在志工可觀察、可詢問、可聯繫的事項。",
+        "3. 若有關懷訪談記錄，優先根據訪談內容提出可詢問、可觀察、可追蹤的重點。",
+        "4. 使用繁體中文，不要提到 AI、模型、以下是、僅供參考。",
+        "5. 不要給醫療診斷；重點放在志工可觀察、可詢問、可聯繫的事項。",
       ].join("\n");
 
       return generateGeminiText(prompt, fallback, {
