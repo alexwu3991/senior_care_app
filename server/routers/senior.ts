@@ -315,15 +315,16 @@ export const seniorRouter = router({
         `健康備註：${senior.healthNote || "無"}`,
         "規則：",
         "1. 只輸出問候語正文，不要標題、編號、引號或說明。",
-        "2. 35 到 70 個中文字左右，語氣自然溫暖，像晚輩關心長輩。",
-        "3. 可以提醒喝水、吃飯、休息或留意身體。",
-        "4. 不要提到點擊連結、AI、模型、以下是。",
-        "5. 句子必須完整，不能從半句開始。",
+        "2. 請寫 2 句完整中文，至少 35 個中文字，最多 90 個中文字。",
+        "3. 語氣自然溫暖，像晚輩關心長輩。",
+        "4. 可以提醒喝水、吃飯、休息或留意身體。",
+        "5. 不要提到點擊連結、AI、模型、以下是。",
+        "6. 句子必須完整，不能從半句開始，也不能只回短句。",
       ].join("\n");
 
       return generateGeminiText(prompt, fallback, {
         temperature: 0.35,
-        maxOutputTokens: 120,
+        maxOutputTokens: 180,
         cleanText: cleanGreetingText,
         validateText: isUsableGreeting,
       });
@@ -343,14 +344,14 @@ export const seniorRouter = router({
         `健康備註：${senior.healthNote || "無"}`,
         "輸出規則：",
         "1. 只輸出 3 行，每行都以「• 」開頭。",
-        "2. 每點要具體可執行，不要空泛鼓勵。",
+        "2. 每點至少 18 個中文字，要具體可執行，不要空泛鼓勵。",
         "3. 使用繁體中文，不要提到 AI、模型、以下是、僅供參考。",
         "4. 不要給醫療診斷；重點放在志工可觀察、可詢問、可聯繫的事項。",
       ].join("\n");
 
       return generateGeminiText(prompt, fallback, {
         temperature: 0.25,
-        maxOutputTokens: 180,
+        maxOutputTokens: 260,
         cleanText: cleanAdviceText,
         validateText: isUsableAdvice,
       });

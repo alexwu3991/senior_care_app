@@ -47,11 +47,9 @@ export async function generateGeminiText(
   const primaryModel = getGeminiModel();
   const models = Array.from(
     new Set([
-      "gemini-2.5-flash",
       primaryModel,
       "gemini-3.5-flash",
-      "gemini-2.0-flash",
-      "gemini-1.5-flash",
+      "gemini-2.5-flash",
     ])
   );
 
@@ -70,6 +68,15 @@ export async function generateGeminiText(
 
   for (const model of models) {
     try {
+      const generationConfig: Record<string, unknown> = {
+        temperature: options.temperature ?? 0.45,
+        maxOutputTokens: options.maxOutputTokens ?? 220,
+      };
+
+      if (model.startsWith("gemini-2.5")) {
+        generationConfig.thinkingConfig = { thinkingBudget: 0 };
+      }
+
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
@@ -80,10 +87,7 @@ export async function generateGeminiText(
           },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: options.temperature ?? 0.45,
-              maxOutputTokens: options.maxOutputTokens ?? 220,
-            },
+            generationConfig,
           }),
         }
       );
