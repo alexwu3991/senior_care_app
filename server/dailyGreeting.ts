@@ -1,8 +1,15 @@
 import { nanoid } from "nanoid";
-import { getAllSeniors, logMessage, reportTokenToMessageId, updateSenior } from "./seniorDb";
+import {
+  getAllSeniors,
+  getDailyGreetingSettings,
+  logMessage,
+  reportTokenToMessageId,
+  updateSenior,
+} from "./seniorDb";
 import { sendGreetingWithReplyButton } from "./line";
 
 const DEFAULT_DAILY_GREETING_HOUR = 8;
+const DEFAULT_DAILY_GREETING_MINUTE = 0;
 const DEFAULT_TIME_ZONE = "Asia/Taipei";
 const DEFAULT_MAX_SEND_ATTEMPTS = 3;
 
@@ -29,6 +36,15 @@ function getLocalHour(date: Date, timeZone: string): number {
   }).format(date);
 
   return Number(hour);
+}
+
+function getLocalMinute(date: Date, timeZone: string): number {
+  const minute = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    minute: "2-digit",
+  }).format(date);
+
+  return Number(minute);
 }
 
 function hasSentToday(sentAt: number | null, now: Date, timeZone: string): boolean {
@@ -182,23 +198,33 @@ export async function runDailyGreetingBatch(options: {
 export function startDailyGreetingScheduler(options: {
   appBaseUrl: string;
   hour?: number;
+  minute?: number;
   timeZone?: string;
   intervalMs?: number;
 }): NodeJS.Timeout {
-  const hour = options.hour ?? DEFAULT_DAILY_GREETING_HOUR;
-  const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
   const intervalMs = options.intervalMs ?? 60 * 1000;
-  let lastRunDateKey: string | null = null;
+  let lastRunScheduleKey: string | null = null;
 
   async function tick() {
     const now = new Date();
+    const settings = await getDailyGreetingSettings();
+    const enabled = settings.enabled;
+    const hour = settings.hour ?? options.hour ?? DEFAULT_DAILY_GREETING_HOUR;
+    const minute = settings.minute ?? options.minute ?? DEFAULT_DAILY_GREETING_MINUTE;
+    const timeZone = settings.timeZone ?? options.timeZone ?? DEFAULT_TIME_ZONE;
     const todayKey = getLocalDateKey(now, timeZone);
+    const scheduleKey = `${todayKey}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 
-    if (getLocalHour(now, timeZone) !== hour || lastRunDateKey === todayKey) {
+    if (
+      !enabled ||
+      getLocalHour(now, timeZone) !== hour ||
+      getLocalMinute(now, timeZone) !== minute ||
+      lastRunScheduleKey === scheduleKey
+    ) {
       return;
     }
 
-    lastRunDateKey = todayKey;
+    lastRunScheduleKey = scheduleKey;
     try {
       const result = await runDailyGreetingBatch({
         appBaseUrl: options.appBaseUrl,

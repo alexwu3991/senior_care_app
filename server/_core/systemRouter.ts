@@ -3,6 +3,10 @@ import { notifyOwner } from "./notification";
 import { adminProcedure, publicProcedure, router } from "./trpc";
 import { buildLineWebhookEndpoint } from "../lineWebhook";
 import { getGeminiModel, isGeminiConfigured } from "../gemini";
+import {
+  getDailyGreetingSettings,
+  updateDailyGreetingSettings,
+} from "../seniorDb";
 
 const localDataPath = () =>
   process.env.LOCAL_DATA_PATH || ".local-data/senior-store.json";
@@ -18,10 +22,10 @@ export const systemRouter = router({
       ok: true,
     })),
 
-  status: publicProcedure.query(() => {
+  status: publicProcedure.query(async () => {
     const hasDatabase = Boolean(process.env.DATABASE_URL);
-    const dailyGreetingEnabled = process.env.DAILY_GREETING_ENABLED !== "false";
     const geminiConfigured = isGeminiConfigured();
+    const dailyGreetingSettings = await getDailyGreetingSettings();
 
     return {
       storage: {
@@ -42,9 +46,11 @@ export const systemRouter = router({
         ),
       },
       dailyGreeting: {
-        enabled: dailyGreetingEnabled,
-        hour: Number(process.env.DAILY_GREETING_HOUR || "8"),
-        timeZone: process.env.DAILY_GREETING_TIME_ZONE || "Asia/Taipei",
+        enabled: dailyGreetingSettings.enabled,
+        hour: dailyGreetingSettings.hour,
+        minute: dailyGreetingSettings.minute,
+        timeZone: dailyGreetingSettings.timeZone,
+        updatedAt: dailyGreetingSettings.updatedAt,
       },
       auth: {
         configured: Boolean(process.env.OAUTH_SERVER_URL && process.env.VITE_APP_ID),
@@ -57,6 +63,23 @@ export const systemRouter = router({
       },
     } as const;
   }),
+
+  updateDailyGreeting: publicProcedure
+    .input(
+      z.object({
+        enabled: z.boolean(),
+        hour: z.number().int().min(0).max(23),
+        minute: z.number().int().min(0).max(59),
+        timeZone: z.string().min(1).max(80),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const settings = await updateDailyGreetingSettings(input);
+      return {
+        success: true,
+        settings,
+      } as const;
+    }),
 
   notifyOwner: adminProcedure
     .input(

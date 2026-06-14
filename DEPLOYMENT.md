@@ -37,7 +37,7 @@ Optional:
 
 ```env
 GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-2.5-flash
 DATABASE_URL=...
 ```
 
@@ -52,6 +52,7 @@ After testing, enable it:
 ```env
 DAILY_GREETING_ENABLED=true
 DAILY_GREETING_HOUR=8
+DAILY_GREETING_MINUTE=0
 DAILY_GREETING_TIME_ZONE=Asia/Taipei
 ```
 

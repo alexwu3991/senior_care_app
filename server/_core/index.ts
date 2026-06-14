@@ -68,16 +68,15 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
-    if (process.env.DAILY_GREETING_ENABLED !== "false") {
-      const appBaseUrl = process.env.APP_BASE_URL || `http://localhost:${port}`;
-      const hour = Number(process.env.DAILY_GREETING_HOUR || "8");
-      const timeZone = process.env.DAILY_GREETING_TIME_ZONE || "Asia/Taipei";
+    const appBaseUrl = process.env.APP_BASE_URL || `http://localhost:${port}`;
+    const hour = Number(process.env.DAILY_GREETING_HOUR || "8");
+    const minute = Number(process.env.DAILY_GREETING_MINUTE || "0");
+    const timeZone = process.env.DAILY_GREETING_TIME_ZONE || "Asia/Taipei";
 
-      startDailyGreetingScheduler({ appBaseUrl, hour, timeZone });
-      console.log(
-        `[DailyGreeting] Scheduler enabled for ${String(hour).padStart(2, "0")}:00 ${timeZone}`
-      );
-    }
+    startDailyGreetingScheduler({ appBaseUrl, hour, minute, timeZone });
+    console.log(
+      `[DailyGreeting] Scheduler ready; default ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${timeZone}`
+    );
   });
 }
 

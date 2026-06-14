@@ -28,6 +28,8 @@ services:
         value: "false"
       - key: DAILY_GREETING_HOUR
         value: "8"
+      - key: DAILY_GREETING_MINUTE
+        value: "0"
       - key: DAILY_GREETING_TIME_ZONE
         value: Asia/Taipei
       - key: DATABASE_URL
@@ -35,7 +37,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-3.5-flash
+        value: gemini-2.5-flash
       - key: VITE_GEMINI_API_KEY
         sync: false
       - key: JWT_SECRET

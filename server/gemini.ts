@@ -20,7 +20,7 @@ export function getGeminiApiKey(): string {
 }
 
 export function getGeminiModel(): string {
-  return process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  return process.env.GEMINI_MODEL || "gemini-2.5-flash";
 }
 
 export function isGeminiConfigured(): boolean {
@@ -37,7 +37,15 @@ export async function generateGeminiText(
   error?: string;
 }> {
   const apiKey = getGeminiApiKey();
-  const model = getGeminiModel();
+  const primaryModel = getGeminiModel();
+  const models = Array.from(
+    new Set([
+      primaryModel,
+      "gemini-2.5-flash",
+      "gemini-2.0-flash",
+      "gemini-1.5-flash",
+    ])
+  );
 
   if (!apiKey) {
     return {
@@ -48,7 +56,10 @@ export async function generateGeminiText(
     };
   }
 
-  try {
+  const errors: string[] = [];
+
+  for (const model of models) {
+    try {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       {
@@ -87,14 +98,19 @@ export async function generateGeminiText(
       source: "gemini",
       model,
     };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn("[Gemini] Falling back to local template:", message);
-    return {
-      text: fallbackText,
-      source: "fallback",
-      model,
-      error: message,
-    };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${model}: ${message}`);
+      console.warn(`[Gemini] Model ${model} failed:`, message);
+    }
+  }
+
+  const error = errors.join(" | ");
+  console.warn("[Gemini] Falling back to local template:", error);
+  return {
+    text: fallbackText,
+    source: "fallback",
+    model: primaryModel,
+    error,
   }
 }

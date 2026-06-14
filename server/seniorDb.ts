@@ -23,17 +23,45 @@ type LocalStoreFile = {
   nextMessageId: number;
   seniors: PersistedSenior[];
   messages: PersistedMessage[];
+  dailyGreetingSettings?: PersistedDailyGreetingSettings;
+};
+export type DailyGreetingSettings = {
+  enabled: boolean;
+  hour: number;
+  minute: number;
+  timeZone: string;
+  updatedAt: number;
+};
+type PersistedDailyGreetingSettings = Omit<DailyGreetingSettings, "updatedAt"> & {
+  updatedAt: string;
 };
 
 const REPORT_TOKEN_PREFIX = "report:";
 const localStorePath = process.env.LOCAL_DATA_PATH || join(process.cwd(), ".local-data", "senior-store.json");
 const memorySeniors: Senior[] = [];
 const memoryMessages: LocalMessage[] = [];
+let memoryDailyGreetingSettings: DailyGreetingSettings = getDefaultDailyGreetingSettings();
 let nextMemorySeniorId = 1;
 let nextMemoryMessageId = 1;
 let warnedMemoryStore = false;
 let localStoreLoaded = false;
 let localStoreWriteQueue = Promise.resolve();
+
+function getEnvNumber(name: string, fallback: number, min: number, max: number): number {
+  const parsed = Number(process.env[name]);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) return fallback;
+  return parsed;
+}
+
+function getDefaultDailyGreetingSettings(): DailyGreetingSettings {
+  return {
+    enabled: process.env.DAILY_GREETING_ENABLED !== "false",
+    hour: getEnvNumber("DAILY_GREETING_HOUR", 8, 0, 23),
+    minute: getEnvNumber("DAILY_GREETING_MINUTE", 0, 0, 59),
+    timeZone: process.env.DAILY_GREETING_TIME_ZONE || "Asia/Taipei",
+    updatedAt: Date.now(),
+  };
+}
 
 function warnMemoryStore(): void {
   if (warnedMemoryStore) return;
@@ -53,6 +81,15 @@ function serializeMessage(message: LocalMessage): PersistedMessage {
   return {
     ...message,
     createdAt: message.createdAt.toISOString(),
+  };
+}
+
+function serializeDailyGreetingSettings(
+  settings: DailyGreetingSettings
+): PersistedDailyGreetingSettings {
+  return {
+    ...settings,
+    updatedAt: new Date(settings.updatedAt).toISOString(),
   };
 }
 
@@ -87,6 +124,13 @@ async function loadLocalStore(): Promise<void> {
     nextMemoryMessageId =
       parsed.nextMessageId ||
       Math.max(0, ...memoryMessages.map(message => message.id)) + 1;
+
+    if (parsed.dailyGreetingSettings) {
+      memoryDailyGreetingSettings = {
+        ...parsed.dailyGreetingSettings,
+        updatedAt: new Date(parsed.dailyGreetingSettings.updatedAt).getTime(),
+      };
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       console.warn("[Database] Failed to load local file store:", error);
@@ -100,6 +144,7 @@ async function saveLocalStore(): Promise<void> {
     nextMessageId: nextMemoryMessageId,
     seniors: memorySeniors.map(serializeSenior),
     messages: memoryMessages.map(serializeMessage),
+    dailyGreetingSettings: serializeDailyGreetingSettings(memoryDailyGreetingSettings),
   };
 
   localStoreWriteQueue = localStoreWriteQueue.then(async () => {
@@ -146,6 +191,37 @@ export async function getAllSeniors(): Promise<Senior[]> {
     return [...memorySeniors].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
   return db.select().from(seniors).orderBy(desc(seniors.createdAt));
+}
+
+// --- App Settings ---
+
+export async function getDailyGreetingSettings(): Promise<DailyGreetingSettings> {
+  const db = await getDb();
+  if (!db) {
+    await ensureLocalStore();
+  }
+  return { ...memoryDailyGreetingSettings };
+}
+
+export async function updateDailyGreetingSettings(
+  data: Partial<Pick<DailyGreetingSettings, "enabled" | "hour" | "minute" | "timeZone">>
+): Promise<DailyGreetingSettings> {
+  const db = await getDb();
+  if (!db) {
+    await ensureLocalStore();
+  }
+
+  memoryDailyGreetingSettings = {
+    ...memoryDailyGreetingSettings,
+    ...data,
+    updatedAt: Date.now(),
+  };
+
+  if (!db) {
+    await saveLocalStore();
+  }
+
+  return { ...memoryDailyGreetingSettings };
 }
 
 export async function getSeniorById(id: number): Promise<Senior | undefined> {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import {
   UserPlus,
@@ -142,8 +142,8 @@ const SystemStatusItem = ({
   </div>
 );
 
-const formatDailyGreetingTime = (hour: number, timeZone: string) =>
-  `${String(hour).padStart(2, '0')}:00 ${timeZone}`;
+const formatDailyGreetingTime = (hour: number, minute: number, timeZone: string) =>
+  `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} ${timeZone}`;
 
 const SystemStatusPanel = ({
   status,
@@ -157,7 +157,7 @@ const SystemStatusPanel = ({
       channelIdConfigured: boolean;
       webhookEndpoint: string;
     };
-    dailyGreeting: { enabled: boolean; hour: number; timeZone: string };
+    dailyGreeting: { enabled: boolean; hour: number; minute: number; timeZone: string };
     auth: { configured: boolean };
     localTestTools: { enabled: boolean };
   };
@@ -214,7 +214,7 @@ const SystemStatusPanel = ({
           label="每日問候"
           value={
             status.dailyGreeting.enabled
-              ? formatDailyGreetingTime(status.dailyGreeting.hour, status.dailyGreeting.timeZone)
+              ? formatDailyGreetingTime(status.dailyGreeting.hour, status.dailyGreeting.minute, status.dailyGreeting.timeZone)
               : '手動'
           }
           tone={status.dailyGreeting.enabled ? 'green' : 'blue'}
@@ -348,6 +348,13 @@ export default function Home() {
   });
 
   const generateAiText = trpc.senior.generateAiText.useMutation();
+  const updateDailyGreeting = trpc.system.updateDailyGreeting.useMutation({
+    onSuccess: () => {
+      utils.system.status.invalidate();
+      toast.success('每日問候排程已更新');
+    },
+    onError: (e) => toast.error(`排程更新失敗：${e.message}`),
+  });
 
   // UI States
   const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'line'>('dashboard');
@@ -381,6 +388,9 @@ export default function Home() {
 
   const [adviceMap, setAdviceMap] = useState<Record<number, string>>({});
   const [loadingAdviceId, setLoadingAdviceId] = useState<number | null>(null);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleTime, setScheduleTime] = useState('08:00');
+  const [scheduleTimeZone, setScheduleTimeZone] = useState('Asia/Taipei');
   const [webhookTestResult, setWebhookTestResult] = useState<null | {
     lineUserId: string;
     displayName: string;
@@ -392,6 +402,15 @@ export default function Home() {
       pendingUsersAdded: number;
     };
   }>(null);
+
+  useEffect(() => {
+    if (!systemStatus?.dailyGreeting) return;
+    setScheduleEnabled(systemStatus.dailyGreeting.enabled);
+    setScheduleTime(
+      `${String(systemStatus.dailyGreeting.hour).padStart(2, '0')}:${String(systemStatus.dailyGreeting.minute).padStart(2, '0')}`
+    );
+    setScheduleTimeZone(systemStatus.dailyGreeting.timeZone);
+  }, [systemStatus?.dailyGreeting]);
   const [reportLinkTestResult, setReportLinkTestResult] = useState<null | {
     seniorId: number;
     seniorName: string;
@@ -530,6 +549,24 @@ export default function Home() {
       second: '2-digit',
     });
 
+  const handleSaveDailyGreetingSchedule = () => {
+    const [hourText, minuteText] = scheduleTime.split(':');
+    const hour = Number(hourText);
+    const minute = Number(minuteText);
+
+    if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+      toast.error('請選擇正確的問候時間');
+      return;
+    }
+
+    updateDailyGreeting.mutate({
+      enabled: scheduleEnabled,
+      hour,
+      minute,
+      timeZone: scheduleTimeZone,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-800 pb-20 md:pb-0">
 
@@ -564,6 +601,68 @@ export default function Home() {
             </div>
 
             <SystemStatusPanel status={systemStatus} />
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-gray-800 flex items-center gap-2">
+                    <CalendarClock size={18} className="text-blue-600" /> 每日定時問候排程
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1">
+                    啟用後會在指定時間，發送給已綁定 Line 且當天尚未發送的長者。
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={scheduleEnabled}
+                    onChange={event => setScheduleEnabled(event.target.checked)}
+                    className="h-4 w-4 accent-blue-600"
+                  />
+                  {scheduleEnabled ? '自動' : '手動'}
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-gray-600">問候時間</span>
+                  <input
+                    type="time"
+                    value={scheduleTime}
+                    onChange={event => setScheduleTime(event.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-gray-600">時區</span>
+                  <select
+                    value={scheduleTimeZone}
+                    onChange={event => setScheduleTimeZone(event.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="Asia/Taipei">Asia/Taipei</option>
+                    <option value="Asia/Tokyo">Asia/Tokyo</option>
+                    <option value="UTC">UTC</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSaveDailyGreetingSchedule}
+                  disabled={updateDailyGreeting.isPending}
+                  className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {updateDailyGreeting.isPending && <Loader className="animate-spin" size={15} />}
+                  儲存排程
+                </button>
+              </div>
+
+              <div className="text-xs text-gray-500">
+                目前模式：
+                <span className={scheduleEnabled ? 'text-green-700 font-bold' : 'text-blue-700 font-bold'}>
+                  {scheduleEnabled ? ` 自動 ${scheduleTime} ${scheduleTimeZone}` : ' 手動發送'}
+                </span>
+              </div>
+            </div>
 
             {/* Stats Summary */}
             <div className="grid grid-cols-4 gap-2 text-center mb-6">
