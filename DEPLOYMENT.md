@@ -41,6 +41,28 @@ GEMINI_MODEL=gemini-2.5-flash
 DATABASE_URL=...
 ```
 
+## Optional: enable manager login
+
+Manager ownership is enforced only after OAuth is configured. Set these in
+Render to enable each volunteer/manager to sign in and manage their own seniors:
+
+```env
+JWT_SECRET=replace-with-a-long-random-secret
+VITE_APP_ID=your-oauth-app-id
+OAUTH_SERVER_URL=https://your-oauth-server
+VITE_OAUTH_PORTAL_URL=https://your-oauth-login-portal
+OWNER_OPEN_ID=optional-admin-open-id
+OWNER_NAME=optional-admin-name
+```
+
+Notes:
+
+- `JWT_SECRET` signs the app session cookie. Generate a long random value and keep it secret.
+- `VITE_APP_ID`, `OAUTH_SERVER_URL`, and `VITE_OAUTH_PORTAL_URL` must come from the OAuth provider.
+- `OWNER_OPEN_ID` makes that account an `admin`, able to view all seniors and reassign ownership.
+- After changing Render environment variables, redeploy the service.
+- Confirm `/api/trpc/system.status` returns `auth.configured: true`.
+
 Daily greeting should stay disabled until Line sending has been tested:
 
 ```env
