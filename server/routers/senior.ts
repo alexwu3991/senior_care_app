@@ -25,6 +25,7 @@ import {
 import { generateGeminiText } from "../gemini";
 import { isAnyAuthConfigured } from "../localAuth";
 import { getDailyGreetingPreview } from "../dailyGreeting";
+import { getWeatherContextForAddress } from "../weather";
 import {
   buildLineWebhookEndpoint,
   buildLineWebhookPayloadForFollow,
@@ -109,6 +110,24 @@ function buildGreetingFallback(senior: { name: string; health: string; healthNot
     ? "今天也請記得喝水、吃飯。"
     : "今天也請留意身體狀況、按時休息。";
   return `${greeting}，${senior.name}！${healthHint}看到訊息後回報平安，讓我們放心。`;
+}
+
+function buildWeatherAwareGreetingFallback(
+  senior: { name: string; health: string; healthNote: string | null },
+  weatherSummary: string | null
+): string {
+  const base = buildGreetingFallback(senior);
+  if (!weatherSummary) return base;
+  if (/下雨|毛毛雨|雷雨/.test(weatherSummary)) {
+    return `${base}外出記得帶傘、慢慢走，路面濕滑要多留意。`;
+  }
+  if (/晴朗|晴時多雲/.test(weatherSummary)) {
+    return `${base}今天外出也記得補充水分，天氣熱時就多休息。`;
+  }
+  if (/有霧/.test(weatherSummary)) {
+    return `${base}若要外出請放慢腳步，視線不好時更要注意安全。`;
+  }
+  return base;
 }
 
 function buildAdviceFallback(senior: {
@@ -441,20 +460,25 @@ export const seniorRouter = router({
     .mutation(async ({ input, ctx }) => {
       const senior = await getAccessibleSenior(input.seniorId, ctx);
       const timeOfDay = getTimeOfDay();
-      const fallback = buildGreetingFallback(senior);
+      const weatherContext = await getWeatherContextForAddress(senior.address);
+      const fallback = buildWeatherAwareGreetingFallback(senior, weatherContext?.summary ?? null);
       const prompt = [
         "你是台灣長者關懷志工，請產生一則可以直接貼到 LINE 的繁體中文問候語。",
         `長者姓名：${senior.name}`,
+        `所在地/地址：${senior.address}`,
         `問候時段：${timeOfDay}`,
         `健康狀況：${senior.health}`,
         `健康備註：${senior.healthNote || "無"}`,
+        `所在地天氣：${weatherContext?.summary || "無即時天氣資料，請維持原本溫暖關懷語氣"}`,
         "規則：",
         "1. 只輸出問候語正文，不要標題、編號、引號或說明。",
         "2. 請寫 2 句完整中文，至少 35 個中文字，最多 90 個中文字。",
         "3. 語氣自然溫暖，像晚輩關心長輩。",
-        "4. 可以提醒喝水、吃飯、休息或留意身體。",
+        "4. 保留原本喝水、吃飯、休息或留意身體的關懷方向。",
         "5. 不要提到點擊連結、AI、模型、以下是。",
         "6. 句子必須完整，不能從半句開始，也不能只回短句。",
+        "7. 若所在地天氣可用，請自然融入氣溫、下雨、悶熱、偏涼、風大或有霧等合適提醒；不要生硬列數據。",
+        "8. 若無即時天氣資料，不要編造天氣，只保留原本關懷語氣。",
       ].join("\n");
 
       return generateGeminiText(prompt, fallback, {
