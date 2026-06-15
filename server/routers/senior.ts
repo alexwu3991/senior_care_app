@@ -2,7 +2,7 @@ import { z } from "zod";
 import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
 import { UNAUTHED_ERR_MSG } from "@shared/const";
-import { publicProcedure, router } from "../_core/trpc";
+import { adminProcedure, publicProcedure, router } from "../_core/trpc";
 import type { Senior, User } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
 import {
@@ -11,6 +11,7 @@ import {
   createSenior,
   updateSenior,
   deleteSenior,
+  getManagerById,
   logMessage,
   reportTokenToMessageId,
   getMessagesBySeniorId,
@@ -301,6 +302,37 @@ export const seniorRouter = router({
       await updateSenior(input.id, {
         managerOpenId: null,
         managerName: null,
+      });
+
+      return { success: true };
+    }),
+
+  // 系統管理員指派志工：可將長者交給指定的一般管理者，或改回未指派。
+  assignManager: adminProcedure
+    .input(z.object({ seniorId: z.number(), managerId: z.number().nullable() }))
+    .mutation(async ({ input }) => {
+      const senior = await getSeniorById(input.seniorId);
+      if (!senior) throw new Error("找不到此長者資料");
+
+      if (input.managerId === null) {
+        await updateSenior(input.seniorId, {
+          managerOpenId: null,
+          managerName: null,
+        });
+        return { success: true };
+      }
+
+      const manager = await getManagerById(input.managerId);
+      if (!manager || manager.active !== 1) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "找不到可指派的志工帳號" });
+      }
+      if (manager.role !== "user") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "只能指派一般志工/管理者" });
+      }
+
+      await updateSenior(input.seniorId, {
+        managerOpenId: `local:${manager.username}`,
+        managerName: manager.name || manager.email || manager.username,
       });
 
       return { success: true };

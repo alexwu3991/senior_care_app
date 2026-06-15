@@ -34,6 +34,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   LogOut,
+  UserCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -360,6 +361,14 @@ export default function Home() {
     onError: (e) => toast.error(`交回失敗：${e.message}`),
   });
 
+  const assignManager = trpc.senior.assignManager.useMutation({
+    onSuccess: () => {
+      utils.senior.list.invalidate();
+      toast.success('負責志工已更新');
+    },
+    onError: (e) => toast.error(`指派失敗：${e.message}`),
+  });
+
   const devScenario = trpc.senior.devScenario.useMutation({
     onSuccess: () => {
       utils.senior.list.invalidate();
@@ -406,6 +415,9 @@ export default function Home() {
     },
     onError: (e) => toast.error(`新增管理者失敗：${e.message}`),
   });
+  const activeVolunteerManagers = managerAccounts.filter(
+    manager => manager.active && manager.role === 'user'
+  );
   const updateDailyGreeting = trpc.system.updateDailyGreeting.useMutation({
     onSuccess: () => {
       utils.system.status.invalidate();
@@ -643,6 +655,13 @@ export default function Home() {
       name: newManagerName,
       email: newManagerEmail,
       role: newManagerRole,
+    });
+  };
+
+  const handleAssignManager = (seniorId: number, managerIdText: string) => {
+    assignManager.mutate({
+      seniorId,
+      managerId: managerIdText ? Number(managerIdText) : null,
     });
   };
 
@@ -966,6 +985,11 @@ export default function Home() {
                   senior.managerOpenId &&
                   (senior.managerOpenId === currentUserOpenId || currentUserIsAdmin)
                 );
+                const selectedManager = activeVolunteerManagers.find(
+                  manager => `local:${manager.username}` === senior.managerOpenId
+                );
+                const selectedManagerValue = selectedManager ? String(selectedManager.id) : '';
+                const assignedManagerUnavailable = Boolean(senior.managerOpenId && !selectedManager);
                 return (
                 <div key={senior.id} className={`bg-white rounded-xl shadow-sm border overflow-hidden ${overdue ? 'border-red-300 ring-2 ring-red-100' : 'border-gray-100'}`}>
 
@@ -1053,13 +1077,43 @@ export default function Home() {
                       <span className="text-gray-500 flex items-center gap-1"><Activity size={14} /> 健康</span>
                       <span className="text-gray-700">{senior.health} {senior.healthNote && `(${senior.healthNote})`}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between gap-3">
                       <span className="text-gray-500 flex items-center gap-1"><Users size={14} /> 負責管理者</span>
                       <span className={senior.managerName ? 'text-gray-700' : 'text-gray-400'}>
                         {senior.managerName || '未指派'}
                       </span>
                     </div>
-                    {(canClaimSenior || canReleaseSenior) && (
+                    {currentUserIsAdmin && localManagerAuthEnabled && (
+                      <div className="bg-white border border-blue-100 rounded-lg p-3 space-y-2">
+                        <label className="text-xs font-bold text-blue-700 flex items-center gap-1">
+                          <UserCheck size={14} /> 系統管理員指派志工
+                        </label>
+                        {assignedManagerUnavailable && (
+                          <div className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-100 rounded px-2 py-1">
+                            目前負責者「{senior.managerName || senior.managerOpenId}」不在可指派志工清單中。
+                          </div>
+                        )}
+                        <select
+                          value={selectedManagerValue}
+                          onChange={event => handleAssignManager(senior.id, event.target.value)}
+                          disabled={assignManager.isPending}
+                          className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                        >
+                          <option value="">未指派</option>
+                          {activeVolunteerManagers.map(manager => (
+                            <option key={manager.id} value={manager.id}>
+                              {manager.name}（{manager.username}）
+                            </option>
+                          ))}
+                        </select>
+                        {activeVolunteerManagers.length === 0 && (
+                          <div className="text-xs text-gray-400">
+                            尚無一般志工帳號，請先到「管理者帳號」新增。
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {(canClaimSenior || canReleaseSenior) && !currentUserIsAdmin && (
                       <div className="flex justify-end">
                         {canClaimSenior && (
                           <button

@@ -387,6 +387,20 @@ export async function getManagerByUsername(username: string): Promise<ManagerAcc
   return result[0];
 }
 
+export async function getManagerById(id: number): Promise<ManagerAccount | undefined> {
+  const db = await getDb();
+  if (!db) {
+    await ensureLocalStore();
+    return memoryManagers.find(manager => manager.id === id);
+  }
+  const result = await db
+    .select()
+    .from(managerAccounts)
+    .where(eq(managerAccounts.id, id))
+    .limit(1);
+  return result[0];
+}
+
 export async function getManagerByOpenId(openId: string): Promise<ManagerAccount | undefined> {
   if (!openId.startsWith("local:")) return undefined;
   return getManagerByUsername(openId.slice("local:".length));
