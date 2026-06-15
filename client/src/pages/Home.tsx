@@ -415,6 +415,12 @@ export default function Home() {
     },
     onError: (e) => toast.error(`新增管理者失敗：${e.message}`),
   });
+  const resetManagerPassword = trpc.auth.resetManagerPassword.useMutation({
+    onSuccess: () => {
+      toast.success('密碼已重設，請通知該管理者使用新密碼登入');
+    },
+    onError: (e) => toast.error(`重設密碼失敗：${e.message}`),
+  });
   const activeVolunteerManagers = managerAccounts.filter(
     manager => manager.active && manager.role === 'user'
   );
@@ -655,6 +661,19 @@ export default function Home() {
       name: newManagerName,
       email: newManagerEmail,
       role: newManagerRole,
+    });
+  };
+
+  const handleResetManagerPassword = (manager: { id: number; name: string; username: string }) => {
+    const newPassword = window.prompt(`請輸入「${manager.name}（${manager.username}）」的新密碼，至少 8 個字：`);
+    if (newPassword === null) return;
+    if (newPassword.trim().length < 8) {
+      toast.error('新密碼至少需要 8 個字');
+      return;
+    }
+    resetManagerPassword.mutate({
+      id: manager.id,
+      password: newPassword.trim(),
     });
   };
 
@@ -1356,7 +1375,7 @@ export default function Home() {
                   <div className="p-4 text-sm text-gray-400">尚無管理者帳號</div>
                 )}
                 {managerAccounts.map(manager => (
-                  <div key={manager.id} className="p-4 flex items-center justify-between gap-3">
+                  <div key={manager.id} className="p-4 flex items-center justify-between gap-3 flex-wrap">
                     <div>
                       <div className="font-bold text-gray-800">{manager.name}</div>
                       <div className="text-xs text-gray-500">
@@ -1364,13 +1383,23 @@ export default function Home() {
                         {manager.email ? ` · ${manager.email}` : ''}
                       </div>
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full font-bold ${
-                      manager.role === 'admin'
-                        ? 'bg-orange-100 text-orange-700'
-                        : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {manager.role === 'admin' ? '系統管理員' : '管理者'}
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                      <span className={`text-xs px-2 py-1 rounded-full font-bold ${
+                        manager.role === 'admin'
+                          ? 'bg-orange-100 text-orange-700'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {manager.role === 'admin' ? '系統管理員' : '管理者'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleResetManagerPassword(manager)}
+                        disabled={resetManagerPassword.isPending}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <RefreshCw size={13} /> 重設密碼
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

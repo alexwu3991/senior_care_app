@@ -11,7 +11,9 @@ import {
 import { seniorRouter } from "./routers/senior";
 import {
   createManagerAccount,
+  getManagerById,
   listManagerAccounts,
+  updateManagerPassword,
 } from "./seniorDb";
 
 export const appRouter = router({
@@ -78,6 +80,21 @@ export const appRouter = router({
           active: 1,
         });
         return { id };
+      }),
+    resetManagerPassword: adminProcedure
+      .input(
+        z.object({
+          id: z.number(),
+          password: z.string().min(8).max(128),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const manager = await getManagerById(input.id);
+        if (!manager) {
+          throw new Error("找不到管理者帳號");
+        }
+        await updateManagerPassword(input.id, await hashPassword(input.password));
+        return { success: true };
       }),
   }),
 

@@ -425,6 +425,24 @@ export async function createManagerAccount(data: InsertManagerAccount): Promise<
   return (result[0] as { insertId: number }).insertId;
 }
 
+export async function updateManagerPassword(id: number, passwordHash: string): Promise<void> {
+  const db = await getDb();
+  const now = new Date();
+  if (!db) {
+    await ensureLocalStore();
+    const index = memoryManagers.findIndex(manager => manager.id === id);
+    if (index === -1) return;
+    memoryManagers[index] = {
+      ...memoryManagers[index],
+      passwordHash,
+      updatedAt: now,
+    };
+    await saveLocalStore();
+    return;
+  }
+  await db.update(managerAccounts).set({ passwordHash }).where(eq(managerAccounts.id, id));
+}
+
 export async function updateManagerLastSignedIn(id: number): Promise<void> {
   const db = await getDb();
   const now = new Date();
