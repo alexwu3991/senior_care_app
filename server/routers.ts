@@ -12,6 +12,7 @@ import { seniorRouter } from "./routers/senior";
 import {
   createManagerAccount,
   getManagerById,
+  getManagerByUsername,
   listManagerAccounts,
   updateManagerPassword,
 } from "./seniorDb";
@@ -36,6 +37,34 @@ export const appRouter = router({
           ctx.req
         );
         return { user };
+      }),
+    registerManager: publicProcedure
+      .input(
+        z.object({
+          username: z.string().min(3).max(64),
+          password: z.string().min(8).max(128),
+          name: z.string().min(1).max(100),
+          email: z.string().email().optional().or(z.literal("")),
+        })
+      )
+      .mutation(async ({ input }) => {
+        if (!isLocalManagerAuthEnabled()) {
+          throw new Error("內建管理者登入尚未啟用");
+        }
+        const username = input.username.trim().toLowerCase();
+        const existing = await getManagerByUsername(username);
+        if (existing) {
+          throw new Error("此帳號已被註冊");
+        }
+        const id = await createManagerAccount({
+          username,
+          passwordHash: await hashPassword(input.password),
+          name: input.name,
+          email: input.email || null,
+          role: "user",
+          active: 1,
+        });
+        return { id };
       }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
