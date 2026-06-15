@@ -10,16 +10,12 @@ type UseAuthOptions = {
 
 export function useAuth(options?: UseAuthOptions) {
   const { redirectOnUnauthenticated = false } = options ?? {};
-  const authConfigured = Boolean(
-    import.meta.env.VITE_OAUTH_PORTAL_URL && import.meta.env.VITE_APP_ID
-  );
   const redirectPath =
     options?.redirectPath ??
     (redirectOnUnauthenticated ? getLoginUrl() : "");
   const utils = trpc.useUtils();
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
-    enabled: authConfigured,
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -56,10 +52,9 @@ export function useAuth(options?: UseAuthOptions) {
       user: meQuery.data ?? null,
       loading: meQuery.isLoading || logoutMutation.isPending,
       error: meQuery.error ?? logoutMutation.error ?? null,
-      isAuthenticated: authConfigured && Boolean(meQuery.data),
+      isAuthenticated: Boolean(meQuery.data),
     };
   }, [
-    authConfigured,
     meQuery.data,
     meQuery.error,
     meQuery.isLoading,

@@ -9,6 +9,21 @@ CREATE TABLE `message_log` (
 	CONSTRAINT `message_log_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
+CREATE TABLE `manager_accounts` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`username` varchar(64) NOT NULL,
+	`passwordHash` text NOT NULL,
+	`name` varchar(100) NOT NULL,
+	`email` varchar(320),
+	`role` enum('user','admin') NOT NULL DEFAULT 'user',
+	`active` int NOT NULL DEFAULT 1,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`lastSignedIn` timestamp,
+	CONSTRAINT `manager_accounts_id` PRIMARY KEY(`id`),
+	CONSTRAINT `manager_accounts_username_unique` UNIQUE(`username`)
+);
+--> statement-breakpoint
 CREATE TABLE `seniors` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`name` varchar(100) NOT NULL,

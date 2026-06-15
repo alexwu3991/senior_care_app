@@ -25,6 +25,22 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
+export const managerAccounts = mysqlTable("manager_accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  username: varchar("username", { length: 64 }).notNull().unique(),
+  passwordHash: text("passwordHash").notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  email: varchar("email", { length: 320 }),
+  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  active: int("active").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  lastSignedIn: timestamp("lastSignedIn"),
+});
+
+export type ManagerAccount = typeof managerAccounts.$inferSelect;
+export type InsertManagerAccount = typeof managerAccounts.$inferInsert;
+
 /**
  * 長者資料表
  */

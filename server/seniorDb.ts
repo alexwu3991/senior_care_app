@@ -5,8 +5,11 @@ import { getDb } from "./db";
 import {
   seniors,
   messageLog,
+  managerAccounts,
   InsertSenior,
   InsertMessageLog,
+  InsertManagerAccount,
+  ManagerAccount,
   Senior,
 } from "../drizzle/schema";
 
@@ -18,11 +21,18 @@ type PersistedSenior = Omit<Senior, "createdAt" | "updatedAt"> & {
 type PersistedMessage = Omit<LocalMessage, "createdAt"> & {
   createdAt: string;
 };
+type PersistedManagerAccount = Omit<ManagerAccount, "createdAt" | "updatedAt" | "lastSignedIn"> & {
+  createdAt: string;
+  updatedAt: string;
+  lastSignedIn: string | null;
+};
 type LocalStoreFile = {
   nextSeniorId: number;
   nextMessageId: number;
+  nextManagerId?: number;
   seniors: PersistedSenior[];
   messages: PersistedMessage[];
+  managers?: PersistedManagerAccount[];
   dailyGreetingSettings?: PersistedDailyGreetingSettings;
 };
 export type DailyGreetingSettings = {
@@ -40,9 +50,11 @@ const REPORT_TOKEN_PREFIX = "report:";
 const localStorePath = process.env.LOCAL_DATA_PATH || join(process.cwd(), ".local-data", "senior-store.json");
 const memorySeniors: Senior[] = [];
 const memoryMessages: LocalMessage[] = [];
+const memoryManagers: ManagerAccount[] = [];
 let memoryDailyGreetingSettings: DailyGreetingSettings = getDefaultDailyGreetingSettings();
 let nextMemorySeniorId = 1;
 let nextMemoryMessageId = 1;
+let nextMemoryManagerId = 1;
 let warnedMemoryStore = false;
 let localStoreLoaded = false;
 let localStoreWriteQueue = Promise.resolve();
@@ -84,6 +96,15 @@ function serializeMessage(message: LocalMessage): PersistedMessage {
   };
 }
 
+function serializeManager(manager: ManagerAccount): PersistedManagerAccount {
+  return {
+    ...manager,
+    createdAt: manager.createdAt.toISOString(),
+    updatedAt: manager.updatedAt.toISOString(),
+    lastSignedIn: manager.lastSignedIn ? manager.lastSignedIn.toISOString() : null,
+  };
+}
+
 function serializeDailyGreetingSettings(
   settings: DailyGreetingSettings
 ): PersistedDailyGreetingSettings {
@@ -121,12 +142,25 @@ async function loadLocalStore(): Promise<void> {
         createdAt: new Date(message.createdAt),
       }))
     );
+    memoryManagers.splice(
+      0,
+      memoryManagers.length,
+      ...(parsed.managers ?? []).map(manager => ({
+        ...manager,
+        createdAt: new Date(manager.createdAt),
+        updatedAt: new Date(manager.updatedAt),
+        lastSignedIn: manager.lastSignedIn ? new Date(manager.lastSignedIn) : null,
+      }))
+    );
     nextMemorySeniorId =
       parsed.nextSeniorId ||
       Math.max(0, ...memorySeniors.map(senior => senior.id)) + 1;
     nextMemoryMessageId =
       parsed.nextMessageId ||
       Math.max(0, ...memoryMessages.map(message => message.id)) + 1;
+    nextMemoryManagerId =
+      parsed.nextManagerId ||
+      Math.max(0, ...memoryManagers.map(manager => manager.id)) + 1;
 
     if (parsed.dailyGreetingSettings) {
       memoryDailyGreetingSettings = {
@@ -145,8 +179,10 @@ async function saveLocalStore(): Promise<void> {
   const payload: LocalStoreFile = {
     nextSeniorId: nextMemorySeniorId,
     nextMessageId: nextMemoryMessageId,
+    nextManagerId: nextMemoryManagerId,
     seniors: memorySeniors.map(serializeSenior),
     messages: memoryMessages.map(serializeMessage),
+    managers: memoryManagers.map(serializeManager),
     dailyGreetingSettings: serializeDailyGreetingSettings(memoryDailyGreetingSettings),
   };
 
@@ -186,6 +222,25 @@ function createMemorySenior(data: InsertSenior): Senior {
 
   memorySeniors.push(senior);
   return senior;
+}
+
+function createMemoryManager(data: InsertManagerAccount): ManagerAccount {
+  const now = new Date();
+  const manager = {
+    id: nextMemoryManagerId++,
+    username: data.username,
+    passwordHash: data.passwordHash,
+    name: data.name,
+    email: data.email ?? null,
+    role: data.role ?? "user",
+    active: data.active ?? 1,
+    createdAt: data.createdAt ?? now,
+    updatedAt: data.updatedAt ?? now,
+    lastSignedIn: data.lastSignedIn ?? null,
+  } satisfies ManagerAccount;
+
+  memoryManagers.push(manager);
+  return manager;
 }
 
 // --- Senior CRUD ---
@@ -304,6 +359,74 @@ export async function deleteSenior(id: number): Promise<void> {
     return;
   }
   await db.delete(seniors).where(eq(seniors.id, id));
+}
+
+// --- Manager Accounts ---
+
+export async function listManagerAccounts(): Promise<ManagerAccount[]> {
+  const db = await getDb();
+  if (!db) {
+    await ensureLocalStore();
+    return [...memoryManagers].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+  return db.select().from(managerAccounts).orderBy(desc(managerAccounts.createdAt));
+}
+
+export async function getManagerByUsername(username: string): Promise<ManagerAccount | undefined> {
+  const normalized = username.trim().toLowerCase();
+  const db = await getDb();
+  if (!db) {
+    await ensureLocalStore();
+    return memoryManagers.find(manager => manager.username === normalized);
+  }
+  const result = await db
+    .select()
+    .from(managerAccounts)
+    .where(eq(managerAccounts.username, normalized))
+    .limit(1);
+  return result[0];
+}
+
+export async function getManagerByOpenId(openId: string): Promise<ManagerAccount | undefined> {
+  if (!openId.startsWith("local:")) return undefined;
+  return getManagerByUsername(openId.slice("local:".length));
+}
+
+export async function createManagerAccount(data: InsertManagerAccount): Promise<number> {
+  const normalizedData: InsertManagerAccount = {
+    ...data,
+    username: data.username.trim().toLowerCase(),
+  };
+  const db = await getDb();
+  if (!db) {
+    await ensureLocalStore();
+    if (memoryManagers.some(manager => manager.username === normalizedData.username)) {
+      throw new Error("管理者帳號已存在");
+    }
+    const manager = createMemoryManager(normalizedData);
+    await saveLocalStore();
+    return manager.id;
+  }
+  const result = await db.insert(managerAccounts).values(normalizedData);
+  return (result[0] as { insertId: number }).insertId;
+}
+
+export async function updateManagerLastSignedIn(id: number): Promise<void> {
+  const db = await getDb();
+  const now = new Date();
+  if (!db) {
+    await ensureLocalStore();
+    const index = memoryManagers.findIndex(manager => manager.id === id);
+    if (index === -1) return;
+    memoryManagers[index] = {
+      ...memoryManagers[index],
+      lastSignedIn: now,
+      updatedAt: now,
+    };
+    await saveLocalStore();
+    return;
+  }
+  await db.update(managerAccounts).set({ lastSignedIn: now }).where(eq(managerAccounts.id, id));
 }
 
 // --- Message Log ---

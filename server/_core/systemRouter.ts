@@ -4,7 +4,13 @@ import { adminProcedure, publicProcedure, router } from "./trpc";
 import { buildLineWebhookEndpoint } from "../lineWebhook";
 import { getGeminiModel, isGeminiConfigured } from "../gemini";
 import {
+  ensureInitialAdminAccount,
+  isAnyAuthConfigured,
+  isLocalManagerAuthEnabled,
+} from "../localAuth";
+import {
   getDailyGreetingSettings,
+  listManagerAccounts,
   updateDailyGreetingSettings,
 } from "../seniorDb";
 
@@ -26,6 +32,9 @@ export const systemRouter = router({
     const hasDatabase = Boolean(process.env.DATABASE_URL);
     const geminiConfigured = isGeminiConfigured();
     const dailyGreetingSettings = await getDailyGreetingSettings();
+    await ensureInitialAdminAccount();
+    const localAuthEnabled = isLocalManagerAuthEnabled();
+    const managers = localAuthEnabled ? await listManagerAccounts() : [];
 
     return {
       storage: {
@@ -53,7 +62,10 @@ export const systemRouter = router({
         updatedAt: dailyGreetingSettings.updatedAt,
       },
       auth: {
-        configured: Boolean(process.env.OAUTH_SERVER_URL && process.env.VITE_APP_ID),
+        configured: isAnyAuthConfigured(),
+        mode: localAuthEnabled ? "local" : Boolean(process.env.OAUTH_SERVER_URL && process.env.VITE_APP_ID) ? "oauth" : "none",
+        localManagerCount: managers.length,
+        setupRequired: localAuthEnabled && managers.length === 0,
       },
       localTestTools: {
         enabled:

@@ -41,13 +41,35 @@ GEMINI_MODEL=gemini-2.5-flash
 DATABASE_URL=...
 ```
 
-## Optional: enable manager login
+## Optional: enable built-in manager login
 
-Manager ownership is enforced only after OAuth is configured. Set these in
-Render to enable each volunteer/manager to sign in and manage their own seniors:
+Set these in Render to enable username/password login without OAuth. After this
+is enabled, each volunteer/manager signs in with their own account and manages
+their own seniors.
 
 ```env
 JWT_SECRET=replace-with-a-long-random-secret
+MANAGER_AUTH_ENABLED=true
+INITIAL_ADMIN_USERNAME=admin
+INITIAL_ADMIN_PASSWORD=replace-with-a-strong-password
+INITIAL_ADMIN_NAME=系統管理員
+INITIAL_ADMIN_EMAIL=
+```
+
+Notes:
+
+- `JWT_SECRET` signs the app session cookie. Generate a long random value and keep it secret.
+- `INITIAL_ADMIN_USERNAME` and `INITIAL_ADMIN_PASSWORD` are used only to create the first admin when no manager accounts exist.
+- After the first admin is created, add more manager accounts in the app under `管理者帳號`.
+- After changing Render environment variables, redeploy the service.
+- Confirm `/api/trpc/system.status` returns `auth.configured: true` and `auth.mode: "local"`.
+
+## Optional: OAuth manager login
+
+If an OAuth provider is available, these variables can be used instead of
+`MANAGER_AUTH_ENABLED=true`:
+
+```env
 VITE_APP_ID=your-oauth-app-id
 OAUTH_SERVER_URL=https://your-oauth-server
 VITE_OAUTH_PORTAL_URL=https://your-oauth-login-portal
@@ -55,13 +77,8 @@ OWNER_OPEN_ID=optional-admin-open-id
 OWNER_NAME=optional-admin-name
 ```
 
-Notes:
-
-- `JWT_SECRET` signs the app session cookie. Generate a long random value and keep it secret.
 - `VITE_APP_ID`, `OAUTH_SERVER_URL`, and `VITE_OAUTH_PORTAL_URL` must come from the OAuth provider.
 - `OWNER_OPEN_ID` makes that account an `admin`, able to view all seniors and reassign ownership.
-- After changing Render environment variables, redeploy the service.
-- Confirm `/api/trpc/system.status` returns `auth.configured: true`.
 
 Daily greeting should stay disabled until Line sending has been tested:
 

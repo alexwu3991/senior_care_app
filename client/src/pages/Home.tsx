@@ -33,6 +33,7 @@ import {
   History,
   ArrowDownLeft,
   ArrowUpRight,
+  LogOut,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -163,7 +164,7 @@ const SystemStatusPanel = ({
       webhookEndpoint: string;
     };
     dailyGreeting: { enabled: boolean; hour: number; minute: number; timeZone: string };
-    auth: { configured: boolean };
+    auth: { configured: boolean; mode: 'none' | 'oauth' | 'local'; localManagerCount: number; setupRequired: boolean };
     localTestTools: { enabled: boolean };
   };
   currentUserName?: string | null;
@@ -238,7 +239,13 @@ const SystemStatusPanel = ({
           label="管理者"
           value={status.auth.configured ? (currentUserName || '未登入') : '共用模式'}
           tone={status.auth.configured ? (currentUserName ? 'green' : 'yellow') : 'blue'}
-          detail={status.auth.configured ? '只顯示自己關懷的長者' : '尚未啟用登入，暫不限制長者歸屬'}
+          detail={
+            status.auth.mode === 'local'
+              ? `內建登入，管理者 ${status.auth.localManagerCount} 位`
+              : status.auth.configured
+                ? '只顯示自己關懷的長者'
+                : '尚未啟用登入，暫不限制長者歸屬'
+          }
         />
       </div>
     </div>
@@ -247,7 +254,7 @@ const SystemStatusPanel = ({
 
 export default function Home() {
   const utils = trpc.useUtils();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const currentUserName = user?.name || user?.email || user?.openId || null;
   const currentUserOpenId = user?.openId || null;
   const currentUserIsAdmin = user?.role === 'admin';
@@ -267,6 +274,7 @@ export default function Home() {
     }
   );
   const now = Date.now();
+  const localManagerAuthEnabled = systemStatus?.auth.mode === 'local';
   const localTestToolsVisible =
     typeof window !== "undefined" &&
     ["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -382,6 +390,22 @@ export default function Home() {
 
   const generateGreeting = trpc.senior.generateGreeting.useMutation();
   const generateCareAdvice = trpc.senior.generateCareAdvice.useMutation();
+  const { data: managerAccounts = [] } = trpc.auth.listManagers.useQuery(undefined, {
+    enabled: Boolean(localManagerAuthEnabled && currentUserIsAdmin),
+    refetchOnWindowFocus: false,
+  });
+  const createManager = trpc.auth.createManager.useMutation({
+    onSuccess: () => {
+      utils.auth.listManagers.invalidate();
+      setNewManagerUsername('');
+      setNewManagerPassword('');
+      setNewManagerName('');
+      setNewManagerEmail('');
+      setNewManagerRole('user');
+      toast.success('管理者帳號已新增');
+    },
+    onError: (e) => toast.error(`新增管理者失敗：${e.message}`),
+  });
   const updateDailyGreeting = trpc.system.updateDailyGreeting.useMutation({
     onSuccess: () => {
       utils.system.status.invalidate();
@@ -391,13 +415,18 @@ export default function Home() {
   });
 
   // UI States
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'line'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'line' | 'managers'>('dashboard');
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newAddress, setNewAddress] = useState('');
   const [newHealth, setNewHealth] = useState<HealthStatus>('良好');
   const [newHealthNote, setNewHealthNote] = useState('');
   const [newCareInterviewNote, setNewCareInterviewNote] = useState('');
+  const [newManagerUsername, setNewManagerUsername] = useState('');
+  const [newManagerPassword, setNewManagerPassword] = useState('');
+  const [newManagerName, setNewManagerName] = useState('');
+  const [newManagerEmail, setNewManagerEmail] = useState('');
+  const [newManagerRole, setNewManagerRole] = useState<'user' | 'admin'>('user');
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editTargetId, setEditTargetId] = useState<number | null>(null);
@@ -606,6 +635,17 @@ export default function Home() {
     });
   };
 
+  const handleCreateManager = (event: React.FormEvent) => {
+    event.preventDefault();
+    createManager.mutate({
+      username: newManagerUsername,
+      password: newManagerPassword,
+      name: newManagerName,
+      email: newManagerEmail,
+      role: newManagerRole,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-800 pb-20 md:pb-0">
 
@@ -617,7 +657,21 @@ export default function Home() {
             <h1 className="text-xl font-bold">獨居前賢關懷小組 App</h1>
           </div>
           <div className="flex items-center gap-2">
-            <div className="text-xs bg-orange-700 px-2 py-1 rounded">值班中</div>
+            {currentUserName && (
+              <div className="hidden sm:block text-xs bg-orange-700 px-2 py-1 rounded">
+                {currentUserName}
+              </div>
+            )}
+            {currentUserName && (
+              <button
+                type="button"
+                onClick={() => logout()}
+                className="text-xs bg-orange-700 px-2 py-1 rounded hover:bg-orange-800 flex items-center gap-1"
+              >
+                <LogOut size={13} /> 登出
+              </button>
+            )}
+            {!currentUserName && <div className="text-xs bg-orange-700 px-2 py-1 rounded">值班中</div>}
           </div>
         </div>
       </header>
@@ -637,6 +691,14 @@ export default function Home() {
               >
                 <QrCode size={20} /> Line 加好友 QR Code
               </button>
+              {localManagerAuthEnabled && currentUserIsAdmin && (
+                <button
+                  onClick={() => setActiveTab('managers')}
+                  className="flex-1 bg-white border border-blue-200 text-blue-700 px-4 py-3 rounded-lg font-bold hover:bg-blue-50 flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <KeyRound size={20} /> 管理者帳號
+                </button>
+              )}
             </div>
 
             <SystemStatusPanel status={systemStatus} currentUserName={currentUserName} />
@@ -1152,6 +1214,123 @@ export default function Home() {
           </div>
         )}
 
+        {/* Manager Accounts View */}
+        {activeTab === 'managers' && localManagerAuthEnabled && currentUserIsAdmin && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-blue-100">
+              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <KeyRound size={24} /> 管理者帳號
+              </h2>
+              <p className="text-sm text-gray-500 mt-2">
+                新增志工或管理者帳號。一般管理者登入後只會管理自己關懷的長者。
+              </p>
+
+              <form onSubmit={handleCreateManager} className="mt-5 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">帳號 *</span>
+                    <input
+                      value={newManagerUsername}
+                      onChange={event => setNewManagerUsername(event.target.value)}
+                      required
+                      minLength={3}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="例：volunteer01"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">姓名 *</span>
+                    <input
+                      value={newManagerName}
+                      onChange={event => setNewManagerName(event.target.value)}
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="例：王志工"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">初始密碼 *</span>
+                    <input
+                      type="password"
+                      value={newManagerPassword}
+                      onChange={event => setNewManagerPassword(event.target.value)}
+                      required
+                      minLength={8}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="至少 8 個字"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">角色</span>
+                    <select
+                      value={newManagerRole}
+                      onChange={event => setNewManagerRole(event.target.value as 'user' | 'admin')}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="user">管理者</option>
+                      <option value="admin">系統管理員</option>
+                    </select>
+                  </label>
+                </div>
+                <label className="block space-y-1">
+                  <span className="text-sm font-medium text-gray-700">Email（選填）</span>
+                  <input
+                    type="email"
+                    value={newManagerEmail}
+                    onChange={event => setNewManagerEmail(event.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="name@example.com"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={createManager.isPending}
+                  className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {createManager.isPending && <Loader className="animate-spin" size={18} />}
+                  新增管理者
+                </button>
+              </form>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 font-bold text-gray-800">
+                目前管理者
+              </div>
+              <div className="divide-y divide-gray-100">
+                {managerAccounts.length === 0 && (
+                  <div className="p-4 text-sm text-gray-400">尚無管理者帳號</div>
+                )}
+                {managerAccounts.map(manager => (
+                  <div key={manager.id} className="p-4 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-bold text-gray-800">{manager.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {manager.username}
+                        {manager.email ? ` · ${manager.email}` : ''}
+                      </div>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full font-bold ${
+                      manager.role === 'admin'
+                        ? 'bg-orange-100 text-orange-700'
+                        : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {manager.role === 'admin' ? '系統管理員' : '管理者'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className="w-full bg-orange-600 text-white py-3 rounded-lg font-bold hover:bg-orange-700"
+            >
+              回到長者名單
+            </button>
+          </div>
+        )}
+
         {/* Add Senior View */}
         {activeTab === 'add' && (
           <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
@@ -1532,6 +1711,13 @@ export default function Home() {
           <QrCode size={24} />
           <span className="text-xs">Line QR</span>
         </button>
+        {localManagerAuthEnabled && currentUserIsAdmin && (
+          <button onClick={() => setActiveTab('managers')}
+            className={`flex flex-col items-center p-2 ${activeTab === 'managers' ? 'text-orange-600' : 'text-gray-400'}`}>
+            <KeyRound size={24} />
+            <span className="text-xs">管理者</span>
+          </button>
+        )}
       </nav>
     </div>
   );

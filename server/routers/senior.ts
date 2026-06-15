@@ -1,6 +1,7 @@
 import { z } from "zod";
 import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
+import { UNAUTHED_ERR_MSG } from "@shared/const";
 import { publicProcedure, router } from "../_core/trpc";
 import type { Senior, User } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
@@ -21,6 +22,7 @@ import {
   sendLineMessage,
 } from "../line";
 import { generateGeminiText } from "../gemini";
+import { isAnyAuthConfigured } from "../localAuth";
 import { getDailyGreetingPreview } from "../dailyGreeting";
 import {
   buildLineWebhookEndpoint,
@@ -40,7 +42,7 @@ const DevScenarioEnum = z.enum([
 const AiFallbackTypeEnum = z.enum(["greeting", "advice"]);
 
 function isAuthEnforced(): boolean {
-  return Boolean(process.env.OAUTH_SERVER_URL && process.env.VITE_APP_ID);
+  return isAnyAuthConfigured();
 }
 
 function getManagerName(user: User): string {
@@ -50,12 +52,12 @@ function getManagerName(user: User): string {
 function requireUserWhenAuthEnabled(ctx: TrpcContext): User | null {
   if (!isAuthEnforced()) return ctx.user;
   if (ctx.user) return ctx.user;
-  throw new TRPCError({ code: "UNAUTHORIZED", message: "需要登入管理者帳號" });
+  throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
 }
 
 function requireSignedInManager(ctx: TrpcContext): User {
   if (ctx.user) return ctx.user;
-  throw new TRPCError({ code: "UNAUTHORIZED", message: "需要先登入管理者帳號" });
+  throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
 }
 
 function canManageSenior(user: User | null, senior: Senior): boolean {
