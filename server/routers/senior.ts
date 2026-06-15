@@ -171,17 +171,19 @@ function buildWeatherAwareGreetingFallback(
 }
 
 function buildAdviceFallback(senior: {
+  name: string;
   health: string;
   healthNote: string | null;
   careInterviewNote: string | null;
 }): string {
+  const greetingName = getSeniorGreetingName(senior.name);
   const note = senior.healthNote ? `，特別留意「${senior.healthNote}」` : "";
   const interview = senior.careInterviewNote ? `，優先追蹤訪談記錄「${senior.careInterviewNote}」` : "";
-  return [
-    `• 先確認今天是否按時用餐、喝水與服藥${note}${interview}。`,
+  return applyAdviceStyleRules([
+    `• 先確認${greetingName}今天是否按時用餐、喝水與服藥${note}${interview}。`,
     `• 關心身體是否有不適、跌倒、睡眠變差或行動困難。`,
     `• 若超過一天未回報平安，建議後學電話聯繫或安排探訪。`,
-  ].join("\n");
+  ].join("\n"), senior.name);
 }
 
 function cleanGreetingText(text: string): string {
@@ -228,12 +230,49 @@ function cleanAdviceText(text: string): string {
     .join("\n");
 }
 
+function applyAdviceStyleRules(text: string, seniorName: string): string {
+  const greetingName = getSeniorGreetingName(seniorName);
+  const rawName = seniorName.trim();
+  let result = text.trim();
+
+  if (rawName && rawName !== greetingName) {
+    const placeholder = "__SENIOR_GREETING_NAME__";
+    result = replaceAllLiteral(result, greetingName, placeholder);
+    result = replaceAllLiteral(result, rawName, greetingName);
+    result = replaceAllLiteral(result, placeholder, greetingName);
+  }
+
+  result = result.replace(/志工/g, "後學");
+
+  const lines = result
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  if (lines.length && !lines.some(line => line.includes(greetingName))) {
+    lines[0] = lines[0].replace(/^•\s*/, `• ${greetingName}：`);
+  }
+
+  return lines
+    .map((line, index) => {
+      const body = line
+        .replace(/^•\s*/, "")
+        .replace(/感謝慈悲[。！!，,\s]*$/g, "")
+        .replace(/[。．.！!，,\s]+$/g, "")
+        .trim();
+      const closing = index === lines.length - 1 ? "。感謝慈悲" : "。";
+      return `• ${body}${closing}`;
+    })
+    .join("\n");
+}
+
 function isUsableAdvice(text: string): boolean {
   const lines = text.split("\n").filter(line => line.trim().startsWith("•"));
   return (
     lines.length === 3 &&
     lines.every(line => (line.match(/[\u4e00-\u9fff]/g)?.length || 0) >= 8) &&
-    !/(以下是|僅供參考|身為 AI|志工)/.test(text)
+    !/(以下是|僅供參考|身為 AI|志工)/.test(text) &&
+    text.endsWith("感謝慈悲")
   );
 }
 
@@ -542,6 +581,7 @@ export const seniorRouter = router({
         "你是台灣獨居長者關懷小組的照護協作員，協助後學整理探視與電話關懷重點。",
         "請依長者資料，產生給後學看的 3 點照護重點提示。",
         `長者姓名：${senior.name}`,
+        `固定稱呼：${getSeniorGreetingName(senior.name)}`,
         `健康狀況：${senior.health}`,
         `健康備註：${senior.healthNote || "無"}`,
         `關懷訪談記錄：${senior.careInterviewNote || "無"}`,
@@ -551,13 +591,15 @@ export const seniorRouter = router({
         "3. 若有關懷訪談記錄，必須優先根據訪談內容提出可詢問、可觀察、可追蹤的重點。",
         "4. 使用繁體中文，不要提到 AI、模型、以下是、僅供參考。",
         "5. 不要使用「志工」一詞；若需描述關懷者，一律使用「後學」。",
-        "6. 不要給醫療診斷；重點放在後學可觀察、可詢問、可聯繫的事項。",
+        "6. 提到長者姓名時，一律使用固定稱呼，不可省略「前賢」。",
+        "7. 最後一點最末必須以「感謝慈悲」結束。",
+        "8. 不要給醫療診斷；重點放在後學可觀察、可詢問、可聯繫的事項。",
       ].join("\n");
 
       return generateGeminiText(prompt, fallback, {
         temperature: 0.25,
         maxOutputTokens: 260,
-        cleanText: cleanAdviceText,
+        cleanText: text => applyAdviceStyleRules(cleanAdviceText(text), senior.name),
         validateText: isUsableAdvice,
       });
     }),

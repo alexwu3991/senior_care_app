@@ -1205,7 +1205,7 @@ export default function Home() {
                           <AlertTriangle size={18} className="mt-0.5 flex-none" />
                           <div>
                             <p className="font-bold">已超過 24 小時未回報平安</p>
-                            <p className="text-xs text-red-600">建議志工主動電話聯繫，或先發送緊急關懷訊息。</p>
+                            <p className="text-xs text-red-600">建議後學主動電話聯繫，或先發送緊急關懷訊息。</p>
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -1598,7 +1598,7 @@ export default function Home() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">關懷訪談記錄</label>
                 <textarea value={newCareInterviewNote} onChange={(e) => setNewCareInterviewNote(e.target.value)}
                   className="w-full h-28 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  placeholder="例：最近睡眠較淺，擔心晚餐準備不方便，希望志工下次電話先關心飲食與睡眠。" />
+                  placeholder="例：最近睡眠較淺，擔心晚餐準備不方便，希望後學下次電話先關心飲食與睡眠。" />
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => setActiveTab('dashboard')}
