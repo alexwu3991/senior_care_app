@@ -566,7 +566,8 @@ export default function Home() {
     let timeGreeting = '早安';
     if (hour >= 11 && hour < 14) timeGreeting = '午安';
     if (hour >= 18) timeGreeting = '晚安';
-    const defaultMsg = messageOverride || `${timeGreeting}，${senior.name}！最近身體好嗎？\n請點擊下方按鈕回報平安。`;
+    const greetingName = senior.name.trim().endsWith('前賢') ? senior.name.trim() : `${senior.name.trim()}前賢`;
+    const defaultMsg = messageOverride || `${timeGreeting}，${greetingName}！最近身體好嗎？\n請回報平安，讓後學放心。感謝慈悲`;
     setComposeText(defaultMsg);
     setCurrentComposeId(senior.id);
     setSimulatingId(senior.id);
@@ -574,9 +575,10 @@ export default function Home() {
   };
 
   const initiateEmergencyCare = (senior: SeniorRow) => {
+    const greetingName = senior.name.trim().endsWith('前賢') ? senior.name.trim() : `${senior.name.trim()}前賢`;
     initiateSend(
       senior,
-      `${senior.name}，我們發現您已經超過一天沒有回報平安，有點擔心您。\n如果方便，請點擊下方按鈕回報；若身體不舒服，請直接回覆「我需要幫助」。`
+      `${greetingName}，後學發現您已經超過一天沒有回報平安，有點擔心您。\n如果方便，請回報平安；若身體不舒服，請直接回覆「我需要幫助」。感謝慈悲`
     );
   };
 

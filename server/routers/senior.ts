@@ -104,12 +104,49 @@ function getTimeOfDay(): "早上" | "中午" | "晚上" {
   return "早上";
 }
 
+function getSeniorGreetingName(name: string): string {
+  const trimmed = name.trim();
+  return trimmed.endsWith("前賢") ? trimmed : `${trimmed}前賢`;
+}
+
+function replaceAllLiteral(text: string, search: string, replacement: string): string {
+  return text.split(search).join(replacement);
+}
+
+function applyGreetingStyleRules(text: string, seniorName: string): string {
+  const greetingName = getSeniorGreetingName(seniorName);
+  let result = text.trim();
+
+  if (seniorName.trim() && seniorName.trim() !== greetingName) {
+    const placeholder = "__SENIOR_GREETING_NAME__";
+    result = replaceAllLiteral(result, greetingName, placeholder);
+    result = replaceAllLiteral(result, seniorName.trim(), greetingName);
+    result = replaceAllLiteral(result, placeholder, greetingName);
+  }
+
+  result = result.replace(/志工/g, "後學");
+
+  if (!result.includes(greetingName)) {
+    result = `${greetingName}，${result}`;
+  }
+
+  result = result
+    .replace(/感謝慈悲[。！!，,\s]*$/g, "")
+    .replace(/[。！!，,\s]+$/g, "")
+    .trim();
+
+  return `${result}。感謝慈悲`;
+}
+
 function buildGreetingFallback(senior: { name: string; health: string; healthNote: string | null }): string {
   const greeting = getTimeOfDay() === "晚上" ? "晚安" : getTimeOfDay() === "中午" ? "午安" : "早安";
   const healthHint = senior.health === "良好"
     ? "今天也請記得喝水、吃飯。"
     : "今天也請留意身體狀況、按時休息。";
-  return `${greeting}，${senior.name}！${healthHint}看到訊息後回報平安，讓我們放心。`;
+  return applyGreetingStyleRules(
+    `${greeting}，${getSeniorGreetingName(senior.name)}！${healthHint}看到訊息後回報平安，讓後學放心。`,
+    senior.name
+  );
 }
 
 function buildWeatherAwareGreetingFallback(
@@ -118,14 +155,15 @@ function buildWeatherAwareGreetingFallback(
 ): string {
   const base = buildGreetingFallback(senior);
   if (!weatherSummary) return base;
+  const baseWithoutClosing = base.replace(/[。！!，,\s]*感謝慈悲[。！!，,\s]*$/g, "").trim();
   if (/下雨|毛毛雨|雷雨/.test(weatherSummary)) {
-    return `${base}外出記得帶傘、慢慢走，路面濕滑要多留意。`;
+    return applyGreetingStyleRules(`${baseWithoutClosing}，外出記得帶傘、慢慢走，路面濕滑要多留意。`, senior.name);
   }
   if (/晴朗|晴時多雲/.test(weatherSummary)) {
-    return `${base}今天外出也記得補充水分，天氣熱時就多休息。`;
+    return applyGreetingStyleRules(`${baseWithoutClosing}，今天外出也記得補充水分，天氣熱時就多休息。`, senior.name);
   }
   if (/有霧/.test(weatherSummary)) {
-    return `${base}若要外出請放慢腳步，視線不好時更要注意安全。`;
+    return applyGreetingStyleRules(`${baseWithoutClosing}，若要外出請放慢腳步，視線不好時更要注意安全。`, senior.name);
   }
   return base;
 }
@@ -164,9 +202,10 @@ function isUsableGreeting(text: string): boolean {
   const chineseChars = text.match(/[\u4e00-\u9fff]/g)?.length || 0;
   return (
     chineseChars >= 12 &&
-    text.length <= 140 &&
+    text.length <= 180 &&
     !/^[，。、！？；：,.!?;:裡了的和與]/.test(text) &&
-    !/(https?:\/\/|請點擊|連結|以下是|問候語|訊息：)/.test(text)
+    !/(https?:\/\/|請點擊|連結|以下是|問候語|訊息：|志工)/.test(text) &&
+    text.endsWith("感謝慈悲")
   );
 }
 
@@ -465,6 +504,7 @@ export const seniorRouter = router({
       const prompt = [
         "你是台灣長者關懷志工，請產生一則可以直接貼到 LINE 的繁體中文問候語。",
         `長者姓名：${senior.name}`,
+        `固定稱呼：${getSeniorGreetingName(senior.name)}`,
         `所在地/地址：${senior.address}`,
         `問候時段：${timeOfDay}`,
         `健康狀況：${senior.health}`,
@@ -472,19 +512,22 @@ export const seniorRouter = router({
         `所在地天氣：${weatherContext?.summary || "無即時天氣資料，請維持原本溫暖關懷語氣"}`,
         "規則：",
         "1. 只輸出問候語正文，不要標題、編號、引號或說明。",
-        "2. 請寫 2 句完整中文，至少 35 個中文字，最多 90 個中文字。",
+        "2. 請寫 2 句完整中文，至少 35 個中文字，最多 110 個中文字。",
         "3. 語氣自然溫暖，像晚輩關心長輩。",
         "4. 保留原本喝水、吃飯、休息或留意身體的關懷方向。",
-        "5. 不要提到點擊連結、AI、模型、以下是。",
-        "6. 句子必須完整，不能從半句開始，也不能只回短句。",
-        "7. 若所在地天氣可用，請自然融入氣溫、下雨、悶熱、偏涼、風大或有霧等合適提醒；不要生硬列數據。",
-        "8. 若無即時天氣資料，不要編造天氣，只保留原本關懷語氣。",
+        "5. 問候語中提到長者姓名時，一律使用固定稱呼，不可省略「前賢」。",
+        "6. 不要使用「志工」一詞；若需自稱或描述關懷者，一律使用「後學」。",
+        "7. 最後一句最末必須以「感謝慈悲」結束。",
+        "8. 不要提到點擊連結、AI、模型、以下是。",
+        "9. 句子必須完整，不能從半句開始，也不能只回短句。",
+        "10. 若所在地天氣可用，請自然融入氣溫、下雨、悶熱、偏涼、風大或有霧等合適提醒；不要生硬列數據。",
+        "11. 若無即時天氣資料，不要編造天氣，只保留原本關懷語氣。",
       ].join("\n");
 
       return generateGeminiText(prompt, fallback, {
         temperature: 0.35,
         maxOutputTokens: 180,
-        cleanText: cleanGreetingText,
+        cleanText: text => applyGreetingStyleRules(cleanGreetingText(text), senior.name),
         validateText: isUsableGreeting,
       });
     }),

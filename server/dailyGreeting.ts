@@ -63,7 +63,8 @@ function hasSentForSchedule(
 }
 
 function buildDailyGreeting(name: string): string {
-  return `早安，${name}！今天也請記得照顧身體、按時吃飯喝水。\n請點擊下方按鈕回報平安，讓志工知道您一切都好。`;
+  const greetingName = name.trim().endsWith("前賢") ? name.trim() : `${name.trim()}前賢`;
+  return `早安，${greetingName}！今天也請記得照顧身體、按時吃飯喝水。\n請回報平安，讓後學知道您一切都好。感謝慈悲`;
 }
 
 export async function getDailyGreetingPreview(options: {
