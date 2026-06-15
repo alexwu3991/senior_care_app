@@ -249,6 +249,8 @@ export default function Home() {
   const utils = trpc.useUtils();
   const { user } = useAuth();
   const currentUserName = user?.name || user?.email || user?.openId || null;
+  const currentUserOpenId = user?.openId || null;
+  const currentUserIsAdmin = user?.role === 'admin';
   const [historySenior, setHistorySenior] = useState<SeniorRow | null>(null);
   const { data: seniors = [], isLoading } = trpc.senior.list.useQuery();
   const { data: systemStatus } = trpc.system.status.useQuery(undefined, {
@@ -332,6 +334,22 @@ export default function Home() {
       toast.success('長者資料已更新！');
     },
     onError: (e) => toast.error(`更新失敗：${e.message}`),
+  });
+
+  const claimManager = trpc.senior.claimManager.useMutation({
+    onSuccess: () => {
+      utils.senior.list.invalidate();
+      toast.success('已認領長者');
+    },
+    onError: (e) => toast.error(`認領失敗：${e.message}`),
+  });
+
+  const releaseManager = trpc.senior.releaseManager.useMutation({
+    onSuccess: () => {
+      utils.senior.list.invalidate();
+      toast.success('已交回未指派');
+    },
+    onError: (e) => toast.error(`交回失敗：${e.message}`),
   });
 
   const devScenario = trpc.senior.devScenario.useMutation({
@@ -880,6 +898,12 @@ export default function Home() {
             <div className="space-y-4">
               {(seniors as SeniorRow[]).map(senior => {
                 const overdue = isReportOverdue(senior, now);
+                const managerActionsEnabled = Boolean(systemStatus?.auth.configured && currentUserOpenId);
+                const canClaimSenior = managerActionsEnabled && !senior.managerOpenId;
+                const canReleaseSenior = managerActionsEnabled && Boolean(
+                  senior.managerOpenId &&
+                  (senior.managerOpenId === currentUserOpenId || currentUserIsAdmin)
+                );
                 return (
                 <div key={senior.id} className={`bg-white rounded-xl shadow-sm border overflow-hidden ${overdue ? 'border-red-300 ring-2 ring-red-100' : 'border-gray-100'}`}>
 
@@ -973,6 +997,30 @@ export default function Home() {
                         {senior.managerName || '未指派'}
                       </span>
                     </div>
+                    {(canClaimSenior || canReleaseSenior) && (
+                      <div className="flex justify-end">
+                        {canClaimSenior && (
+                          <button
+                            type="button"
+                            onClick={() => claimManager.mutate({ id: senior.id })}
+                            disabled={claimManager.isPending}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 disabled:opacity-50"
+                          >
+                            認領為我的關懷長者
+                          </button>
+                        )}
+                        {canReleaseSenior && (
+                          <button
+                            type="button"
+                            onClick={() => releaseManager.mutate({ id: senior.id })}
+                            disabled={releaseManager.isPending}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200 disabled:opacity-50"
+                          >
+                            交回未指派
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {senior.careInterviewNote && (
                       <div className="bg-white border border-orange-100 rounded-lg p-3 text-xs text-gray-700 leading-relaxed">
                         <div className="font-bold text-orange-700 mb-1">關懷訪談記錄</div>

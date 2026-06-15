@@ -53,6 +53,11 @@ function requireUserWhenAuthEnabled(ctx: TrpcContext): User | null {
   throw new TRPCError({ code: "UNAUTHORIZED", message: "需要登入管理者帳號" });
 }
 
+function requireSignedInManager(ctx: TrpcContext): User {
+  if (ctx.user) return ctx.user;
+  throw new TRPCError({ code: "UNAUTHORIZED", message: "需要先登入管理者帳號" });
+}
+
 function canManageSenior(user: User | null, senior: Senior): boolean {
   if (!isAuthEnforced()) return true;
   if (!user) return false;
@@ -69,6 +74,10 @@ async function getAccessibleSenior(id: number, ctx: TrpcContext): Promise<Senior
     throw new TRPCError({ code: "FORBIDDEN", message: "只能管理自己關懷的長者" });
   }
   return senior;
+}
+
+function canChangeSeniorManager(user: User, senior: Senior): boolean {
+  return user.role === "admin" || !senior.managerOpenId || senior.managerOpenId === user.openId;
 }
 
 function getGeminiFallbackText(type: z.infer<typeof AiFallbackTypeEnum>): string {
@@ -254,6 +263,44 @@ export const seniorRouter = router({
       if (input.lineUserId) {
         removePendingLineUser(input.lineUserId);
       }
+      return { success: true };
+    }),
+
+  // 認領長者：登入管理者可將未指派或自己名下的長者歸屬到自己。
+  claimManager: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const user = requireSignedInManager(ctx);
+      const senior = await getSeniorById(input.id);
+      if (!senior) throw new Error("找不到此長者資料");
+      if (!canChangeSeniorManager(user, senior)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "此長者已由其他管理者關懷" });
+      }
+
+      await updateSenior(input.id, {
+        managerOpenId: user.openId,
+        managerName: getManagerName(user),
+      });
+
+      return { success: true };
+    }),
+
+  // 交回未指派：原負責管理者或 admin 可清除長者歸屬。
+  releaseManager: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const user = requireSignedInManager(ctx);
+      const senior = await getSeniorById(input.id);
+      if (!senior) throw new Error("找不到此長者資料");
+      if (!canChangeSeniorManager(user, senior)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "只能交回自己關懷的長者" });
+      }
+
+      await updateSenior(input.id, {
+        managerOpenId: null,
+        managerName: null,
+      });
+
       return { success: true };
     }),
 
