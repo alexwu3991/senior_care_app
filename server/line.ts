@@ -75,7 +75,7 @@ export async function sendLineMessage(
 }
 
 /**
- * 發送帶有快速回覆按鈕的問候訊息
+ * 發送帶有大型回覆按鈕的問候訊息
  */
 export async function sendGreetingWithReplyButton(
   lineUserId: string,
@@ -88,15 +88,69 @@ export async function sendGreetingWithReplyButton(
 
   const messages: LineMessage[] = [
     {
-      type: "text",
-      text: greetingText,
+      type: "flex",
+      altText: `${seniorName} 的平安問候`,
+      contents: {
+        type: "bubble",
+        size: "mega",
+        body: {
+          type: "box",
+          layout: "vertical",
+          spacing: "md",
+          contents: [
+            {
+              type: "text",
+              text: "平安問候",
+              weight: "bold",
+              size: "xl",
+              color: "#1F2937",
+            },
+            {
+              type: "text",
+              text: greetingText,
+              wrap: true,
+              size: "md",
+              color: "#374151",
+            },
+          ],
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          spacing: "sm",
+          contents: [
+            {
+              type: "button",
+              style: "primary",
+              height: "md",
+              color: "#16A34A",
+              action: {
+                type: "uri",
+                label: "✅ 我很平安，請放心",
+                uri: reportUrl,
+              },
+            },
+            {
+              type: "button",
+              style: "primary",
+              height: "md",
+              color: "#DC2626",
+              action: {
+                type: "message",
+                label: "🆘 需要幫助",
+                text: "我需要幫助",
+              },
+            },
+          ],
+        },
+      },
       quickReply: {
         items: [
           {
             type: "action",
             action: {
               type: "uri",
-              label: "✅ 我很平安，請放心",
+              label: "✅ 平安",
               uri: reportUrl,
             },
           },
@@ -104,7 +158,7 @@ export async function sendGreetingWithReplyButton(
             type: "action",
             action: {
               type: "message",
-              label: "🆘 需要幫助",
+              label: "🆘 求助",
               text: "我需要幫助",
             },
           },
@@ -164,6 +218,9 @@ export interface LineFlexMessage {
   type: "flex";
   altText: string;
   contents: object;
+  quickReply?: {
+    items: QuickReplyItem[];
+  };
 }
 
 export interface QuickReplyItem {
