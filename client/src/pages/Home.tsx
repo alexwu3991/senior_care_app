@@ -41,6 +41,7 @@ import { toast } from 'sonner';
 // --- Types ---
 type HealthStatus = '良好' | '慢性病' | '行動不便' | '需定期回診' | '其他';
 type SeniorStatus = 'green' | 'yellow' | 'red' | 'gray';
+type DailyGreetingSchedule = { hour: number; minute: number };
 
 const LINE_OFFICIAL_ACCOUNT_ID = '@833zhchh';
 const LINE_ADD_FRIEND_URL = `https://line.me/R/ti/p/${LINE_OFFICIAL_ACCOUNT_ID}`;
@@ -148,8 +149,15 @@ const SystemStatusItem = ({
   </div>
 );
 
-const formatDailyGreetingTime = (hour: number, minute: number, timeZone: string) =>
-  `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} ${timeZone}`;
+const formatDailyGreetingTime = (hour: number, minute: number, timeZone?: string) =>
+  `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}${timeZone ? ` ${timeZone}` : ''}`;
+
+const formatDailyGreetingSchedules = (schedules: DailyGreetingSchedule[] | undefined, timeZone: string) => {
+  const normalized = schedules?.length ? schedules : [];
+  return normalized.length
+    ? `${normalized.map(schedule => formatDailyGreetingTime(schedule.hour, schedule.minute)).join('、')} ${timeZone}`
+    : `08:00 ${timeZone}`;
+};
 
 const SystemStatusPanel = ({
   status,
@@ -164,7 +172,13 @@ const SystemStatusPanel = ({
       channelIdConfigured: boolean;
       webhookEndpoint: string;
     };
-    dailyGreeting: { enabled: boolean; hour: number; minute: number; timeZone: string };
+    dailyGreeting: {
+      enabled: boolean;
+      hour: number;
+      minute: number;
+      schedules?: DailyGreetingSchedule[];
+      timeZone: string;
+    };
     auth: { configured: boolean; mode: 'none' | 'oauth' | 'local'; localManagerCount: number; setupRequired: boolean };
     localTestTools: { enabled: boolean };
   };
@@ -222,11 +236,14 @@ const SystemStatusPanel = ({
           label="每日問候"
           value={
             status.dailyGreeting.enabled
-              ? formatDailyGreetingTime(status.dailyGreeting.hour, status.dailyGreeting.minute, status.dailyGreeting.timeZone)
+              ? formatDailyGreetingSchedules(
+                  status.dailyGreeting.schedules ?? [{ hour: status.dailyGreeting.hour, minute: status.dailyGreeting.minute }],
+                  status.dailyGreeting.timeZone
+                )
               : '手動'
           }
           tone={status.dailyGreeting.enabled ? 'green' : 'blue'}
-          detail={status.dailyGreeting.enabled ? '自動排程啟用' : '排程停用，可手動發送'}
+          detail={status.dailyGreeting.enabled ? '自動排程最多 3 次' : '排程停用，可手動發送'}
         />
         <SystemStatusItem
           icon={<Wrench size={15} />}
@@ -472,7 +489,7 @@ export default function Home() {
   const [adviceMap, setAdviceMap] = useState<Record<number, string>>({});
   const [loadingAdviceId, setLoadingAdviceId] = useState<number | null>(null);
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
-  const [scheduleTime, setScheduleTime] = useState('08:00');
+  const [scheduleTimes, setScheduleTimes] = useState<string[]>(['08:00']);
   const [scheduleTimeZone, setScheduleTimeZone] = useState('Asia/Taipei');
   const [webhookTestResult, setWebhookTestResult] = useState<null | {
     lineUserId: string;
@@ -488,9 +505,14 @@ export default function Home() {
 
   useEffect(() => {
     if (!systemStatus?.dailyGreeting) return;
+    const schedules = systemStatus.dailyGreeting.schedules?.length
+      ? systemStatus.dailyGreeting.schedules
+      : [{ hour: systemStatus.dailyGreeting.hour, minute: systemStatus.dailyGreeting.minute }];
     setScheduleEnabled(systemStatus.dailyGreeting.enabled);
-    setScheduleTime(
-      `${String(systemStatus.dailyGreeting.hour).padStart(2, '0')}:${String(systemStatus.dailyGreeting.minute).padStart(2, '0')}`
+    setScheduleTimes(
+      schedules.map(schedule =>
+        `${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`
+      )
     );
     setScheduleTimeZone(systemStatus.dailyGreeting.timeZone);
   }, [systemStatus?.dailyGreeting]);
@@ -636,21 +658,75 @@ export default function Home() {
     });
 
   const handleSaveDailyGreetingSchedule = () => {
-    const [hourText, minuteText] = scheduleTime.split(':');
-    const hour = Number(hourText);
-    const minute = Number(minuteText);
-
-    if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+    if (scheduleTimes.some(time => !/^\d{2}:\d{2}$/.test(time))) {
       toast.error('請選擇正確的問候時間');
+      return;
+    }
+
+    const schedules = scheduleTimes.map(time => {
+      const [hourText, minuteText] = time.split(':');
+      return {
+        hour: Number(hourText),
+        minute: Number(minuteText),
+      };
+    });
+
+    if (
+      schedules.length === 0 ||
+      schedules.length > 3 ||
+      schedules.some(schedule =>
+        !Number.isInteger(schedule.hour) ||
+        schedule.hour < 0 ||
+        schedule.hour > 23 ||
+        !Number.isInteger(schedule.minute) ||
+        schedule.minute < 0 ||
+        schedule.minute > 59
+      )
+    ) {
+      toast.error('請選擇正確的問候時間');
+      return;
+    }
+
+    const uniqueSchedules = Array.from(
+      new Map(
+        schedules
+          .sort((a, b) => a.hour * 60 + a.minute - (b.hour * 60 + b.minute))
+          .map(schedule => [`${schedule.hour}:${schedule.minute}`, schedule])
+      ).values()
+    );
+
+    if (uniqueSchedules.length !== schedules.length) {
+      toast.error('排程時間不可重複');
       return;
     }
 
     updateDailyGreeting.mutate({
       enabled: scheduleEnabled,
-      hour,
-      minute,
+      hour: uniqueSchedules[0].hour,
+      minute: uniqueSchedules[0].minute,
+      schedules: uniqueSchedules,
       timeZone: scheduleTimeZone,
     });
+  };
+
+  const updateScheduleTime = (index: number, time: string) => {
+    setScheduleTimes(prev => prev.map((item, itemIndex) => itemIndex === index ? time : item));
+  };
+
+  const addScheduleTime = () => {
+    if (scheduleTimes.length >= 3) {
+      toast.error('每日定時問候排程最多 3 次');
+      return;
+    }
+    setScheduleTimes(prev => [...prev, '08:00']);
+  };
+
+  const removeScheduleTime = (index: number) => {
+    if (scheduleTimes.length <= 1) {
+      toast.error('至少保留 1 個排程時間');
+      return;
+    }
+    setScheduleTimes(prev => prev.filter((_, itemIndex) => itemIndex !== index));
   };
 
   const handleCreateManager = (event: React.FormEvent) => {
@@ -748,7 +824,7 @@ export default function Home() {
                     <CalendarClock size={18} className="text-blue-600" /> 每日定時問候排程
                   </h2>
                   <p className="text-xs text-gray-500 mt-1">
-                    啟用後會在指定時間，發送給已綁定 Line 且當天尚未發送的長者。
+                    啟用後會依設定時間發送給已綁定 Line 的長者，每日最多 3 次。
                   </p>
                 </div>
                 <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
@@ -763,15 +839,38 @@ export default function Home() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
-                <label className="space-y-1">
-                  <span className="text-xs font-bold text-gray-600">問候時間</span>
-                  <input
-                    type="time"
-                    value={scheduleTime}
-                    onChange={event => setScheduleTime(event.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </label>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-bold text-gray-600">問候時間（最多 3 次）</span>
+                    <button
+                      type="button"
+                      onClick={addScheduleTime}
+                      disabled={scheduleTimes.length >= 3}
+                      className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 disabled:opacity-50"
+                    >
+                      新增排程
+                    </button>
+                  </div>
+                  {scheduleTimes.map((time, index) => (
+                    <div key={`schedule-${index}`} className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={time}
+                        onChange={event => updateScheduleTime(index, event.target.value)}
+                        className="min-w-0 flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeScheduleTime(index)}
+                        disabled={scheduleTimes.length <= 1}
+                        className="p-2 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 disabled:opacity-40"
+                        title="移除此排程"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
                 <label className="space-y-1">
                   <span className="text-xs font-bold text-gray-600">時區</span>
                   <select
@@ -798,7 +897,7 @@ export default function Home() {
               <div className="text-xs text-gray-500">
                 目前模式：
                 <span className={scheduleEnabled ? 'text-green-700 font-bold' : 'text-blue-700 font-bold'}>
-                  {scheduleEnabled ? ` 自動 ${scheduleTime} ${scheduleTimeZone}` : ' 手動發送'}
+                  {scheduleEnabled ? ` 自動 ${scheduleTimes.join('、')} ${scheduleTimeZone}` : ' 手動發送'}
                 </span>
               </div>
             </div>

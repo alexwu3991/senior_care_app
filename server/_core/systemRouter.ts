@@ -17,6 +17,11 @@ import {
 const localDataPath = () =>
   process.env.LOCAL_DATA_PATH || ".local-data/senior-store.json";
 
+const DailyGreetingScheduleSchema = z.object({
+  hour: z.number().int().min(0).max(23),
+  minute: z.number().int().min(0).max(59),
+});
+
 export const systemRouter = router({
   health: publicProcedure
     .input(
@@ -58,6 +63,7 @@ export const systemRouter = router({
         enabled: dailyGreetingSettings.enabled,
         hour: dailyGreetingSettings.hour,
         minute: dailyGreetingSettings.minute,
+        schedules: dailyGreetingSettings.schedules,
         timeZone: dailyGreetingSettings.timeZone,
         updatedAt: dailyGreetingSettings.updatedAt,
       },
@@ -80,8 +86,9 @@ export const systemRouter = router({
     .input(
       z.object({
         enabled: z.boolean(),
-        hour: z.number().int().min(0).max(23),
-        minute: z.number().int().min(0).max(59),
+        hour: z.number().int().min(0).max(23).optional(),
+        minute: z.number().int().min(0).max(59).optional(),
+        schedules: z.array(DailyGreetingScheduleSchema).min(1).max(3).optional(),
         timeZone: z.string().min(1).max(80),
       })
     )

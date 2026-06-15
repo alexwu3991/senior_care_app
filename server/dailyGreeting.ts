@@ -47,9 +47,19 @@ function getLocalMinute(date: Date, timeZone: string): number {
   return Number(minute);
 }
 
-function hasSentToday(sentAt: number | null, now: Date, timeZone: string): boolean {
+function hasSentForSchedule(
+  sentAt: number | null,
+  now: Date,
+  timeZone: string,
+  scheduleHour: number,
+  scheduleMinute: number
+): boolean {
   if (!sentAt) return false;
-  return getLocalDateKey(new Date(sentAt), timeZone) === getLocalDateKey(now, timeZone);
+  const sentDate = new Date(sentAt);
+  if (getLocalDateKey(sentDate, timeZone) !== getLocalDateKey(now, timeZone)) return false;
+  const sentMinuteOfDay = getLocalHour(sentDate, timeZone) * 60 + getLocalMinute(sentDate, timeZone);
+  const scheduleMinuteOfDay = scheduleHour * 60 + scheduleMinute;
+  return sentMinuteOfDay >= scheduleMinuteOfDay;
 }
 
 function buildDailyGreeting(name: string): string {
@@ -59,12 +69,16 @@ function buildDailyGreeting(name: string): string {
 export async function getDailyGreetingPreview(options: {
   now?: Date;
   timeZone?: string;
+  scheduleHour?: number;
+  scheduleMinute?: number;
 }): Promise<{
   wouldSend: Array<{ seniorId: number; name: string; lineDisplayName: string | null }>;
   skipped: Array<{ seniorId: number; name: string; reason: string }>;
 }> {
   const now = options.now ?? new Date();
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
+  const scheduleHour = options.scheduleHour ?? getLocalHour(now, timeZone);
+  const scheduleMinute = options.scheduleMinute ?? getLocalMinute(now, timeZone);
   const seniors = await getAllSeniors();
   const wouldSend: Array<{ seniorId: number; name: string; lineDisplayName: string | null }> = [];
   const skipped: Array<{ seniorId: number; name: string; reason: string }> = [];
@@ -75,8 +89,8 @@ export async function getDailyGreetingPreview(options: {
       continue;
     }
 
-    if (hasSentToday(senior.messageSentTime, now, timeZone)) {
-      skipped.push({ seniorId: senior.id, name: senior.name, reason: "今天已發送" });
+    if (hasSentForSchedule(senior.messageSentTime, now, timeZone, scheduleHour, scheduleMinute)) {
+      skipped.push({ seniorId: senior.id, name: senior.name, reason: "此排程已發送" });
       continue;
     }
 
@@ -132,6 +146,8 @@ export async function runDailyGreetingBatch(options: {
   appBaseUrl: string;
   now?: Date;
   timeZone?: string;
+  scheduleHour?: number;
+  scheduleMinute?: number;
   maxAttempts?: number;
 }): Promise<{
   attempted: number;
@@ -141,6 +157,8 @@ export async function runDailyGreetingBatch(options: {
 }> {
   const now = options.now ?? new Date();
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
+  const scheduleHour = options.scheduleHour ?? getLocalHour(now, timeZone);
+  const scheduleMinute = options.scheduleMinute ?? getLocalMinute(now, timeZone);
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_SEND_ATTEMPTS;
   const seniors = await getAllSeniors();
   const failed: Array<{ seniorId: number; name: string; error: string; attempts: number }> = [];
@@ -149,7 +167,10 @@ export async function runDailyGreetingBatch(options: {
   let skipped = 0;
 
   for (const senior of seniors) {
-    if (!senior.lineUserId || hasSentToday(senior.messageSentTime, now, timeZone)) {
+    if (
+      !senior.lineUserId ||
+      hasSentForSchedule(senior.messageSentTime, now, timeZone, scheduleHour, scheduleMinute)
+    ) {
       skipped += 1;
       continue;
     }
@@ -209,27 +230,36 @@ export function startDailyGreetingScheduler(options: {
     const now = new Date();
     const settings = await getDailyGreetingSettings();
     const enabled = settings.enabled;
-    const hour = settings.hour ?? options.hour ?? DEFAULT_DAILY_GREETING_HOUR;
-    const minute = settings.minute ?? options.minute ?? DEFAULT_DAILY_GREETING_MINUTE;
+    const fallbackHour = settings.hour ?? options.hour ?? DEFAULT_DAILY_GREETING_HOUR;
+    const fallbackMinute = settings.minute ?? options.minute ?? DEFAULT_DAILY_GREETING_MINUTE;
+    const schedules = settings.schedules?.length
+      ? settings.schedules
+      : [{ hour: fallbackHour, minute: fallbackMinute }];
     const timeZone = settings.timeZone ?? options.timeZone ?? DEFAULT_TIME_ZONE;
     const todayKey = getLocalDateKey(now, timeZone);
-    const scheduleKey = `${todayKey}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+    const currentHour = getLocalHour(now, timeZone);
+    const currentMinute = getLocalMinute(now, timeZone);
+    const dueSchedule = schedules.find(
+      schedule => schedule.hour === currentHour && schedule.minute === currentMinute
+    );
 
     if (
       !enabled ||
-      getLocalHour(now, timeZone) !== hour ||
-      getLocalMinute(now, timeZone) !== minute ||
-      lastRunScheduleKey === scheduleKey
+      !dueSchedule ||
+      lastRunScheduleKey === `${todayKey}T${String(dueSchedule.hour).padStart(2, "0")}:${String(dueSchedule.minute).padStart(2, "0")}`
     ) {
       return;
     }
 
+    const scheduleKey = `${todayKey}T${String(dueSchedule.hour).padStart(2, "0")}:${String(dueSchedule.minute).padStart(2, "0")}`;
     lastRunScheduleKey = scheduleKey;
     try {
       const result = await runDailyGreetingBatch({
         appBaseUrl: options.appBaseUrl,
         now,
         timeZone,
+        scheduleHour: dueSchedule.hour,
+        scheduleMinute: dueSchedule.minute,
       });
       console.log("[DailyGreeting] Completed", result);
     } catch (error) {

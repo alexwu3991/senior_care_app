@@ -39,8 +39,13 @@ export type DailyGreetingSettings = {
   enabled: boolean;
   hour: number;
   minute: number;
+  schedules: DailyGreetingSchedule[];
   timeZone: string;
   updatedAt: number;
+};
+export type DailyGreetingSchedule = {
+  hour: number;
+  minute: number;
 };
 type PersistedDailyGreetingSettings = Omit<DailyGreetingSettings, "updatedAt"> & {
   updatedAt: string;
@@ -66,13 +71,42 @@ function getEnvNumber(name: string, fallback: number, min: number, max: number):
 }
 
 function getDefaultDailyGreetingSettings(): DailyGreetingSettings {
+  const hour = getEnvNumber("DAILY_GREETING_HOUR", 8, 0, 23);
+  const minute = getEnvNumber("DAILY_GREETING_MINUTE", 0, 0, 59);
   return {
     enabled: process.env.DAILY_GREETING_ENABLED !== "false",
-    hour: getEnvNumber("DAILY_GREETING_HOUR", 8, 0, 23),
-    minute: getEnvNumber("DAILY_GREETING_MINUTE", 0, 0, 59),
+    hour,
+    minute,
+    schedules: [{ hour, minute }],
     timeZone: process.env.DAILY_GREETING_TIME_ZONE || "Asia/Taipei",
     updatedAt: Date.now(),
   };
+}
+
+function normalizeDailyGreetingSchedules(
+  schedules: DailyGreetingSchedule[] | undefined,
+  fallback: DailyGreetingSchedule
+): DailyGreetingSchedule[] {
+  const seen = new Set<string>();
+  const normalized = (schedules && schedules.length > 0 ? schedules : [fallback])
+    .filter(schedule =>
+      Number.isInteger(schedule.hour) &&
+      schedule.hour >= 0 &&
+      schedule.hour <= 23 &&
+      Number.isInteger(schedule.minute) &&
+      schedule.minute >= 0 &&
+      schedule.minute <= 59
+    )
+    .sort((a, b) => a.hour * 60 + a.minute - (b.hour * 60 + b.minute))
+    .filter(schedule => {
+      const key = `${schedule.hour}:${schedule.minute}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 3);
+
+  return normalized.length > 0 ? normalized : [fallback];
 }
 
 function warnMemoryStore(): void {
@@ -163,8 +197,19 @@ async function loadLocalStore(): Promise<void> {
       Math.max(0, ...memoryManagers.map(manager => manager.id)) + 1;
 
     if (parsed.dailyGreetingSettings) {
+      const fallbackSchedule = {
+        hour: parsed.dailyGreetingSettings.hour ?? 8,
+        minute: parsed.dailyGreetingSettings.minute ?? 0,
+      };
+      const schedules = normalizeDailyGreetingSchedules(
+        parsed.dailyGreetingSettings.schedules,
+        fallbackSchedule
+      );
       memoryDailyGreetingSettings = {
         ...parsed.dailyGreetingSettings,
+        hour: schedules[0].hour,
+        minute: schedules[0].minute,
+        schedules,
         updatedAt: new Date(parsed.dailyGreetingSettings.updatedAt).getTime(),
       };
     }
@@ -265,16 +310,28 @@ export async function getDailyGreetingSettings(): Promise<DailyGreetingSettings>
 }
 
 export async function updateDailyGreetingSettings(
-  data: Partial<Pick<DailyGreetingSettings, "enabled" | "hour" | "minute" | "timeZone">>
+  data: Partial<Pick<DailyGreetingSettings, "enabled" | "hour" | "minute" | "schedules" | "timeZone">>
 ): Promise<DailyGreetingSettings> {
   const db = await getDb();
   if (!db) {
     await ensureLocalStore();
   }
 
+  const fallbackSchedule = {
+    hour: data.hour ?? memoryDailyGreetingSettings.hour,
+    minute: data.minute ?? memoryDailyGreetingSettings.minute,
+  };
+  const schedules = normalizeDailyGreetingSchedules(
+    data.schedules ?? memoryDailyGreetingSettings.schedules,
+    fallbackSchedule
+  );
+
   memoryDailyGreetingSettings = {
     ...memoryDailyGreetingSettings,
     ...data,
+    hour: schedules[0].hour,
+    minute: schedules[0].minute,
+    schedules,
     updatedAt: Date.now(),
   };
 
