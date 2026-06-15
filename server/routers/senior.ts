@@ -89,7 +89,7 @@ function getGeminiFallbackText(type: z.infer<typeof AiFallbackTypeEnum>): string
     return "本機範本：\n• 主動確認今天是否按時用餐、喝水與服藥。\n• 關心身體是否有不舒服、跌倒或睡眠變差。\n• 若超過一天未回報，建議志工電話聯繫或安排探訪。";
   }
 
-  return "早安！今天也請記得吃飯、喝水，照顧好身體。看到訊息後，請點一下回報平安，讓我們放心。";
+  return "早安！今天也請記得吃飯、喝水，照顧好身體。看到訊息後，請回報平安，讓後學放心。感謝慈悲";
 }
 
 function getTimeOfDay(): "早上" | "中午" | "晚上" {
@@ -124,7 +124,9 @@ function applyGreetingStyleRules(text: string, seniorName: string): string {
     result = replaceAllLiteral(result, placeholder, greetingName);
   }
 
-  result = result.replace(/志工/g, "後學");
+  result = result
+    .replace(/請(?:點擊下方按鈕|點擊|點一下|點選下方按鈕|點選)回報平安/g, "請回報平安")
+    .replace(/志工/g, "後學");
 
   if (!result.includes(greetingName)) {
     result = `${greetingName}，${result}`;
@@ -425,12 +427,13 @@ export const seniorRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const senior = await getAccessibleSenior(input.seniorId, ctx);
+      const messageText = applyGreetingStyleRules(input.messageText, senior.name);
       if (!senior.lineUserId) {
         return {
           success: false,
           error: "此長者尚未綁定 Line 帳號，無法發送訊息",
           simulated: true,
-          simulatedMessage: `${input.messageText}\n\n👇 點此回報平安：\n${input.appBaseUrl}/report/DEMO`,
+          simulatedMessage: messageText,
         };
       }
 
@@ -441,7 +444,7 @@ export const seniorRouter = router({
       const result = await sendGreetingWithReplyButton(
         senior.lineUserId,
         senior.name,
-        input.messageText,
+        messageText,
         reportToken,
         input.appBaseUrl
       );
@@ -457,7 +460,7 @@ export const seniorRouter = router({
         await logMessage({
           seniorId: input.seniorId,
           direction: "outbound",
-          messageText: input.messageText,
+          messageText,
           lineMessageId: reportTokenToMessageId(reportToken),
           sentAt: Date.now(),
         });

@@ -48,6 +48,39 @@ const LINE_ADD_FRIEND_URL = `https://line.me/R/ti/p/${LINE_OFFICIAL_ACCOUNT_ID}`
 const LINE_QR_CODE_URL = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=12&data=${encodeURIComponent(LINE_ADD_FRIEND_URL)}`;
 const REPORT_OVERDUE_MS = 24 * 60 * 60 * 1000;
 
+const getSeniorGreetingName = (name: string) => {
+  const trimmed = name.trim();
+  return trimmed.endsWith('前賢') ? trimmed : `${trimmed}前賢`;
+};
+
+const applyGreetingStyleRules = (text: string, seniorName: string) => {
+  const rawName = seniorName.trim();
+  const greetingName = getSeniorGreetingName(seniorName);
+  let result = text.trim();
+
+  if (rawName && rawName !== greetingName) {
+    const placeholder = '__SENIOR_GREETING_NAME__';
+    result = result.split(greetingName).join(placeholder);
+    result = result.split(rawName).join(greetingName);
+    result = result.split(placeholder).join(greetingName);
+  }
+
+  result = result
+    .replace(/請(?:點擊下方按鈕|點擊|點一下|點選下方按鈕|點選)回報平安/g, '請回報平安')
+    .replace(/志工/g, '後學');
+
+  if (!result.includes(greetingName)) {
+    result = `${greetingName}，${result}`;
+  }
+
+  result = result
+    .replace(/感謝慈悲[。！!，,\s]*$/g, '')
+    .replace(/[。！!，,\s]+$/g, '')
+    .trim();
+
+  return `${result}。感謝慈悲`;
+};
+
 interface SeniorRow {
   id: number;
   name: string;
@@ -566,16 +599,16 @@ export default function Home() {
     let timeGreeting = '早安';
     if (hour >= 11 && hour < 14) timeGreeting = '午安';
     if (hour >= 18) timeGreeting = '晚安';
-    const greetingName = senior.name.trim().endsWith('前賢') ? senior.name.trim() : `${senior.name.trim()}前賢`;
+    const greetingName = getSeniorGreetingName(senior.name);
     const defaultMsg = messageOverride || `${timeGreeting}，${greetingName}！最近身體好嗎？\n請回報平安，讓後學放心。感謝慈悲`;
-    setComposeText(defaultMsg);
+    setComposeText(applyGreetingStyleRules(defaultMsg, senior.name));
     setCurrentComposeId(senior.id);
     setSimulatingId(senior.id);
     setShowComposeModal(true);
   };
 
   const initiateEmergencyCare = (senior: SeniorRow) => {
-    const greetingName = senior.name.trim().endsWith('前賢') ? senior.name.trim() : `${senior.name.trim()}前賢`;
+    const greetingName = getSeniorGreetingName(senior.name);
     initiateSend(
       senior,
       `${greetingName}，後學發現您已經超過一天沒有回報平安，有點擔心您。\n如果方便，請回報平安；若身體不舒服，請直接回覆「我需要幫助」。感謝慈悲`
@@ -589,7 +622,7 @@ export default function Home() {
     setIsGeneratingMessage(true);
     try {
       const generated = await generateGreeting.mutateAsync({ seniorId: senior.id });
-      setComposeText(generated.text.trim());
+      setComposeText(applyGreetingStyleRules(generated.text, senior.name));
       if (generated.source === 'fallback') {
         toast.warning('Gemini 輸出不穩，已使用安全範本');
       }
@@ -602,9 +635,12 @@ export default function Home() {
 
   const finalizeSend = () => {
     if (!currentComposeId) return;
+    const senior = seniors.find(s => s.id === currentComposeId) as SeniorRow | undefined;
+    const messageText = senior ? applyGreetingStyleRules(composeText, senior.name) : composeText.trim();
+    setComposeText(messageText);
     sendLineMutation.mutate({
       seniorId: currentComposeId,
-      messageText: composeText,
+      messageText,
       appBaseUrl: window.location.origin,
     });
   };
