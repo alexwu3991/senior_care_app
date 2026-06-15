@@ -86,7 +86,7 @@ function canChangeSeniorManager(user: User, senior: Senior): boolean {
 
 function getGeminiFallbackText(type: z.infer<typeof AiFallbackTypeEnum>): string {
   if (type === "advice") {
-    return "本機範本：\n• 主動確認今天是否按時用餐、喝水與服藥。\n• 關心身體是否有不舒服、跌倒或睡眠變差。\n• 若超過一天未回報，建議志工電話聯繫或安排探訪。";
+    return "本機範本：\n• 主動確認今天是否按時用餐、喝水與服藥。\n• 關心身體是否有不舒服、跌倒或睡眠變差。\n• 若超過一天未回報，建議後學電話聯繫或安排探訪。";
   }
 
   return "早安！今天也請記得吃飯、喝水，照顧好身體。看到訊息後，請回報平安，讓後學放心。感謝慈悲";
@@ -176,13 +176,11 @@ function buildAdviceFallback(senior: {
   careInterviewNote: string | null;
 }): string {
   const note = senior.healthNote ? `，特別留意「${senior.healthNote}」` : "";
-  const interview = senior.careInterviewNote
-    ? `，並參考最近訪談：「${senior.careInterviewNote}」`
-    : "";
+  const interview = senior.careInterviewNote ? `，優先追蹤訪談記錄「${senior.careInterviewNote}」` : "";
   return [
     `• 先確認今天是否按時用餐、喝水與服藥${note}${interview}。`,
     `• 關心身體是否有不適、跌倒、睡眠變差或行動困難。`,
-    `• 若超過一天未回報平安，建議志工電話聯繫或安排探訪。`,
+    `• 若超過一天未回報平安，建議後學電話聯繫或安排探訪。`,
   ].join("\n");
 }
 
@@ -226,7 +224,7 @@ function cleanAdviceText(text: string): string {
 
   return rawLines
     .slice(0, 3)
-    .map(line => `• ${line.replace(/[。．.]{2,}/g, "。").replace(/[。．.]+$/g, "")}。`)
+    .map(line => `• ${line.replace(/志工/g, "後學").replace(/[。．.]{2,}/g, "。").replace(/[。．.]+$/g, "")}。`)
     .join("\n");
 }
 
@@ -235,7 +233,7 @@ function isUsableAdvice(text: string): boolean {
   return (
     lines.length === 3 &&
     lines.every(line => (line.match(/[\u4e00-\u9fff]/g)?.length || 0) >= 8) &&
-    !/(以下是|僅供參考|身為 AI)/.test(text)
+    !/(以下是|僅供參考|身為 AI|志工)/.test(text)
   );
 }
 
@@ -541,8 +539,8 @@ export const seniorRouter = router({
       const senior = await getAccessibleSenior(input.seniorId, ctx);
       const fallback = buildAdviceFallback(senior);
       const prompt = [
-        "你是台灣獨居長者關懷小組的照護協作員。",
-        "請依長者資料，產生給志工看的 3 點探視與電話關懷注意事項。",
+        "你是台灣獨居長者關懷小組的照護協作員，協助後學整理探視與電話關懷重點。",
+        "請依長者資料，產生給後學看的 3 點照護重點提示。",
         `長者姓名：${senior.name}`,
         `健康狀況：${senior.health}`,
         `健康備註：${senior.healthNote || "無"}`,
@@ -550,9 +548,10 @@ export const seniorRouter = router({
         "輸出規則：",
         "1. 只輸出 3 行，每行都以「• 」開頭。",
         "2. 每點至少 18 個中文字，要具體可執行，不要空泛鼓勵。",
-        "3. 若有關懷訪談記錄，優先根據訪談內容提出可詢問、可觀察、可追蹤的重點。",
+        "3. 若有關懷訪談記錄，必須優先根據訪談內容提出可詢問、可觀察、可追蹤的重點。",
         "4. 使用繁體中文，不要提到 AI、模型、以下是、僅供參考。",
-        "5. 不要給醫療診斷；重點放在志工可觀察、可詢問、可聯繫的事項。",
+        "5. 不要使用「志工」一詞；若需描述關懷者，一律使用「後學」。",
+        "6. 不要給醫療診斷；重點放在後學可觀察、可詢問、可聯繫的事項。",
       ].join("\n");
 
       return generateGeminiText(prompt, fallback, {

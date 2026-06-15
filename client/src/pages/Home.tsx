@@ -1343,7 +1343,7 @@ export default function Home() {
 
                       {adviceMap[senior.id] && (
                         <div className="bg-purple-50 border border-purple-100 p-3 rounded-lg text-gray-700 whitespace-pre-line text-xs leading-relaxed">
-                          <strong className="text-purple-700 block mb-1">🤖 AI 建議志工注意：</strong>
+                          <strong className="text-purple-700 block mb-1">🤖 AI 照護重點提示：</strong>
                           {adviceMap[senior.id]}
                         </div>
                       )}
