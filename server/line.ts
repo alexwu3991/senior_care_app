@@ -116,7 +116,7 @@ export async function sendGreetingWithReplyButton(
         },
         footer: {
           type: "box",
-          layout: "vertical",
+          layout: "horizontal",
           spacing: "sm",
           contents: [
             {
@@ -124,9 +124,10 @@ export async function sendGreetingWithReplyButton(
               style: "primary",
               height: "md",
               color: "#16A34A",
+              flex: 1,
               action: {
                 type: "uri",
-                label: "✅ 我很平安，請放心",
+                label: "✅ 我很平安",
                 uri: reportUrl,
               },
             },
@@ -135,6 +136,7 @@ export async function sendGreetingWithReplyButton(
               style: "primary",
               height: "md",
               color: "#DC2626",
+              flex: 1,
               action: {
                 type: "message",
                 label: "🆘 需要幫助",
