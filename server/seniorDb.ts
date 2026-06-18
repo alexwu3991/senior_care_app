@@ -412,9 +412,13 @@ export async function deleteSenior(id: number): Promise<void> {
     await ensureLocalStore();
     const index = memorySeniors.findIndex(senior => senior.id === id);
     if (index !== -1) memorySeniors.splice(index, 1);
+    for (let i = memoryMessages.length - 1; i >= 0; i -= 1) {
+      if (memoryMessages[i].seniorId === id) memoryMessages.splice(i, 1);
+    }
     await saveLocalStore();
     return;
   }
+  await db.delete(messageLog).where(eq(messageLog.seniorId, id));
   await db.delete(seniors).where(eq(seniors.id, id));
 }
 

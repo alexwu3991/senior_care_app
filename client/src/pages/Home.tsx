@@ -351,7 +351,16 @@ export default function Home() {
   });
 
   const deleteSenior = trpc.senior.delete.useMutation({
-    onSuccess: () => { utils.senior.list.invalidate(); toast.success('已刪除長者資料'); },
+    onSuccess: () => {
+      utils.senior.list.invalidate();
+      utils.senior.getMessages.invalidate();
+      setHistorySenior(null);
+      setShowEditModal(false);
+      setEditTargetId(null);
+      setShowComposeModal(false);
+      setCurrentComposeId(null);
+      toast.success('已刪除長者資料');
+    },
     onError: (e) => toast.error(`刪除失敗：${e.message}`),
   });
 
@@ -592,6 +601,14 @@ export default function Home() {
       healthNote: editHealthNote,
       careInterviewNote: editCareInterviewNote,
     });
+  };
+
+  const handleDeleteSenior = (senior: SeniorRow) => {
+    const confirmed = window.confirm(
+      `確定要刪除 ${senior.name} 的資料嗎？\n\n此動作會一併移除該長者的訊息紀錄，刪除後無法復原。`
+    );
+    if (!confirmed) return;
+    deleteSenior.mutate({ id: senior.id });
   };
 
   const initiateSend = (senior: SeniorRow, messageOverride?: string) => {
@@ -1165,7 +1182,7 @@ export default function Home() {
                         <MapPin size={14} /> {senior.address}
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
                       <button
                         onClick={() => setHistorySenior(senior)}
                         className="bg-green-50 text-green-700 p-2 rounded-full hover:bg-green-100 transition"
@@ -1188,11 +1205,12 @@ export default function Home() {
                         <Send size={20} />
                       </button>
                       <button
-                        onClick={() => { if (confirm(`確定要刪除 ${senior.name} 的資料嗎？`)) deleteSenior.mutate({ id: senior.id }); }}
-                        className="bg-red-50 text-red-400 p-2 rounded-full hover:bg-red-100 transition"
-                        title="刪除"
+                        onClick={() => handleDeleteSenior(senior)}
+                        disabled={deleteSenior.isPending}
+                        className="inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="刪除長者資料"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={16} /> 刪除
                       </button>
                     </div>
                   </div>
